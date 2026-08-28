@@ -1,0 +1,108 @@
+npm run build
+npm run start
+
+# ⚠⚠ THIS IS A LIVE MIGRATION, NOT A NEW FEATURE.
+# /cash-advance is in production TODAY, served by the Shell's own copy. Real users
+# depend on it. That copy was deleted from the Shell on 2026-08-27, so ORDER IS THE
+# SAFETY MECHANISM:
+#
+#     zone deployed -> ZONES entry added -> verified -> ONLY THEN a new Shell image
+#
+# Roll the new Shell image first and /cash-advance/* is 404 for every user: the new
+# image has no copy, and without the ZONES entry there is nothing to proxy to. There
+# is no automatic fallback — the middleware routes on whether the KEY exists, never
+# on whether the zone is reachable.
+
+# Do NOT use Helper\deployment\build_all.bat — its 19 cd targets point at
+# C:\Source Control\KSS, which does not exist. Build from this directory.
+
+# Step 1: Login to Docker registry
+docker login docker-hosted.sebaoffice.ir
+
+# Step 2: Build the Docker image (pass basePath so assets resolve under /cash-advance)
+docker build --build-arg NEXT_PUBLIC_BASE_PATH=/cash-advance --build-arg NEXT_PUBLIC_APP_NAME=KSS_Client_Web_cash_advance -t docker-hosted.sebaoffice.ir/kss-client-web-cash-advance:latest .
+
+# Alternative: Build and push in one command (if using buildx)
+docker buildx build --push --build-arg NEXT_PUBLIC_BASE_PATH=/cash-advance --build-arg NEXT_PUBLIC_APP_NAME=KSS_Client_Web_cash_advance -t docker-hosted.sebaoffice.ir/kss-client-web-cash-advance:latest .
+
+# NextAuth: this app does not issue sessions, it decrypts the cookie the Shell issued.
+# nextauth-secret must be byte-identical to the Shell's. deployment.yaml omits the key on
+# purpose — absent + non-optional gives CreateContainerConfigError. An empty value would
+# start the pod and 500 all 34 BFF routes while the probes keep reporting Ready.
+#   kubectl patch secret kss-client-web-cash-advance-secrets -n kss-client-web-cash-advance -p "{\"data\":{\"nextauth-secret\":\"$(kubectl get secret kss-client-web-secrets -n kss-client-web -o jsonpath='{.data.nextauth-secret}')\"}}"
+#   kubectl rollout restart deployment/kss-client-web-cash-advance -n kss-client-web-cash-advance
+
+# Step 3: Push the image to registry
+docker push docker-hosted.sebaoffice.ir/kss-client-web-cash-advance:latest
+
+# Step 4: Create secrets (first time only — copy nextauth-secret from the Shell, do not invent one)
+#   kubectl create secret generic kss-client-web-cash-advance-secrets -n kss-client-web-cash-advance \
+#     --from-literal=nextauth-secret="$(kubectl get secret kss-client-web-secrets -n kss-client-web -o jsonpath='{.data.nextauth-secret}' | base64 -d)" \
+#     --from-literal=storage-endpoint='' --from-literal=storage-region='' \
+#     --from-literal=storage-bucket='' --from-literal=storage-access-key-id='' \
+#     --from-literal=storage-secret-access-key='' --from-literal=storage-cdn-url='' \
+#     --dry-run=client -o yaml | kubectl apply -f -
+
+# Step 5: Apply manifests (Namespace + Deployment + Service + ConfigMap + Secret + PDB + NetworkPolicy)
+# EXPECTED: pods will NOT start yet — nextauth-secret is deliberately absent until step 6.
+kubectl apply -f deployment.yaml
+
+# Step 6: NEXTAUTH_SECRET — copy it across, do not read it, retype it or generate one
+kubectl patch secret kss-client-web-cash-advance-secrets -n kss-client-web-cash-advance -p "{\"data\":{\"nextauth-secret\":\"$(kubectl get secret kss-client-web-secrets -n kss-client-web -o jsonpath='{.data.nextauth-secret}')\"}}"
+# Verify the two print IDENTICAL strings:
+#   kubectl get secret kss-client-web-secrets              -n kss-client-web              -o jsonpath='{.data.nextauth-secret}'
+#   kubectl get secret kss-client-web-cash-advance-secrets -n kss-client-web-cash-advance -o jsonpath='{.data.nextauth-secret}'
+
+# Step 7: Restart deployment so pods pick up ConfigMap/Secret changes
+kubectl rollout restart deployment/kss-client-web-cash-advance -n kss-client-web-cash-advance
+kubectl rollout status deployment/kss-client-web-cash-advance -n kss-client-web-cash-advance
+
+# Step 8: Prove the zone works BEFORE any user traffic reaches it
+kubectl run -n kss-client-web-cash-advance tmp-curl --rm -it --image=curlimages/curl --restart=Never -- curl -s -o /dev/null -w "%{http_code}\n" http://kss-client-web-cash-advance-service.kss-client-web-cash-advance.svc.cluster.local/cash-advance/api/health
+
+# Step 9: Point the Shell at this zone — THIS is the moment users move
+#   ZONES={"mpf":"...","cash-advance":"http://kss-client-web-cash-advance-service.kss-client-web-cash-advance.svc.cluster.local"}
+#   (keep every existing key — ZONES is one JSON object, not one entry)
+#   kubectl rollout restart deployment/kss-client-web -n kss-client-web
+
+# Step 10: Verify the hop, then click through as a logged-in user
+#   200 = the Shell is proxying here.  404 = ZONES is not in effect.
+curl -s -o /dev/null -w "%{http_code}\n" https://erp.seba.ir/cash-advance/api/health
+# The health route is anonymous, so 200 proves ROUTING only. The real test is opening
+# /cash-advance/funds logged in and seeing data — that exercises session decrypt ->
+# BFF route -> the five backend services.
+
+# Create docker-registry secret (first time only)
+# Secrets are namespace-scoped — the one in kss-client-web does NOT carry over.
+kubectl create secret docker-registry docker-secret \
+  --docker-server=docker-hosted.sebaoffice.ir \
+  --docker-username=YOUR_USERNAME \
+  --docker-password=YOUR_PASSWORD \
+  --namespace kss-client-web-cash-advance
+
+# Useful diagnostic commands
+kubectl get pods          -n kss-client-web-cash-advance
+kubectl get secrets       -n kss-client-web-cash-advance
+kubectl get configmaps    -n kss-client-web-cash-advance
+kubectl get svc           -n kss-client-web-cash-advance
+kubectl get networkpolicy -n kss-client-web-cash-advance
+kubectl get pdb           -n kss-client-web-cash-advance
+
+# This zone has no public entrypoint, so there is nothing here to check for ingress,
+# certificate, pvc or hpa — those do not exist in this namespace by design.
+
+# Check pod logs
+kubectl logs -n kss-client-web-cash-advance -l app=kss-client-web-cash-advance --tail=50
+
+# Check pod env vars (confirm all five API base URLs and basePath /cash-advance)
+kubectl exec -it $(kubectl get pods -n kss-client-web-cash-advance -l app=kss-client-web-cash-advance -o jsonpath='{.items[0].metadata.name}') -n kss-client-web-cash-advance -- env | sort
+
+# ROLLBACK — remove the cash-advance key from the Shell's ZONES and restart it.
+# ⚠ This only works while the DEPLOYED Shell image still contains its own /cash-advance
+# copy (git 718c88d). Once a Shell image built after 2026-08-27 is rolled out, removing
+# the key gives 404, not the old page — recovery then means restoring the deleted files
+# from git and rebuilding the Shell.
+
+# Delete resources if needed
+kubectl delete networkpolicy kss-client-web-cash-advance-network-policy -n kss-client-web-cash-advance
+kubectl delete secrets docker-secret -n kss-client-web-cash-advance

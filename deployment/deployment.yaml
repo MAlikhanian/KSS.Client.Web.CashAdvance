@@ -1,0 +1,293 @@
+# =============================================================================
+#  KSS Client Web — Cash Advance domain app (multi-zone)
+# =============================================================================
+#  Modelled on Mpf/deployment/deployment.yaml. Differences from the Shell:
+#
+#   1. NO INGRESS. The Shell is the only public entrypoint; it rewrites
+#      /cash-advance/* here over cluster DNS. This app has no middleware.ts, so
+#      direct exposure would give an unauthenticated visitor a rendering page
+#      instead of a redirect to sign-in.
+#
+#   2. PROBES HIT /cash-advance/api/health — owned by this app, no database, no
+#      session. NOT the Shell's /api/health, which queries Prisma. That matters
+#      more here than anywhere: this app calls FIVE backend services across 34
+#      BFF routes, so a dependency-aware probe would make it the most
+#      restart-prone app in the estate for reasons outside its own control.
+#
+#   3. Larger than the other zones — 49 pages, 34 BFF routes — so it gets the
+#      Shell's memory profile rather than Mpf's.
+#
+#  ---------------------------------------------------------------------------
+#  ⚠ THIS IS A LIVE MIGRATION, NOT A NEW FEATURE.
+#  /cash-advance is in production TODAY, served by the Shell's own copy (48
+#  files at git 718c88d). Real users depend on it. That copy was deleted from
+#  the Shell on 2026-08-27, so ORDER IS THE SAFETY MECHANISM:
+#
+#      deploy this zone  ->  add it to the Shell's ZONES  ->  verify
+#      ->  ONLY THEN roll a new Shell image
+#
+#  Ship the new Shell image first and /cash-advance/* is 404 for every user:
+#  the new image has no copy and, without the ZONES entry, nothing to proxy to.
+#  There is no automatic fallback — the middleware routes on whether the KEY
+#  exists, never on whether the zone is reachable.
+#
+#  ---------------------------------------------------------------------------
+#  THREE THINGS ARE NOT IN THIS FILE, by how quietly each fails:
+#   A. docker-secret in THIS namespace   -> ImagePullBackOff (loud)
+#   B. nextauth-secret from the Shell    -> CreateContainerConfigError (loud)
+#   C. ZONES on the Shell                -> SILENT: pods Ready, zero traffic
+#      ZONES={"cash-advance":"http://kss-client-web-cash-advance-service.kss-client-web-cash-advance.svc.cluster.local"}
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kss-client-web-cash-advance
+  labels:
+    name: kss-client-web-cash-advance
+    app: kss-client-web-cash-advance
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kss-client-web-cash-advance
+  namespace: kss-client-web-cash-advance
+  labels:
+    app: kss-client-web-cash-advance
+    version: v1.0.0
+  annotations:
+    keel.sh/policy: force
+    keel.sh/match-tag: "true"
+    keel.sh/trigger: poll
+spec:
+  # 3, not 2 — this one carries live users through the migration.
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: kss-client-web-cash-advance
+  template:
+    metadata:
+      labels:
+        app: kss-client-web-cash-advance
+        version: v1.0.0
+    spec:
+      imagePullSecrets:
+      - name: docker-secret
+      containers:
+      - name: kss-client-web-cash-advance
+        image: docker-hosted.sebaoffice.ir/kss-client-web-cash-advance:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: HOSTNAME
+          value: "0.0.0.0"
+        - name: TZ
+          value: "UTC"
+
+        # The NextAuth session cookie carries every permission claim (~25 KB
+        # JWE-encoded) and overflows Node's default 16 KB header buffer.
+        - name: NODE_OPTIONS
+          value: "--max-http-header-size=131072"
+
+        # ── Auth ────────────────────────────────────────────────────────────
+        # ⚠ MUST BE BYTE-IDENTICAL TO THE SHELL'S. This app decrypts the cookie
+        # the Shell issued; a different value is broken auth, not weaker auth.
+        # Key deliberately ABSENT from the Secret below and this ref is NOT
+        # optional -> CreateContainerConfigError until it is patched in.
+        # An EMPTY value would instead let the pod start and 500 all 34 BFF
+        # routes while the probes (which need no session) report Ready.
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kss-client-web-cash-advance-secrets
+              key: nextauth-secret
+        - name: NEXTAUTH_URL
+          value: "https://erp.seba.ir"
+        - name: SHELL_URL
+          value: "https://erp.seba.ir"
+
+        # ── Application ─────────────────────────────────────────────────────
+        - name: NEXT_PUBLIC_BASE_PATH
+          value: "/cash-advance"
+        - name: NEXT_PUBLIC_APP_NAME
+          value: "KSS_Client_Web_cash_advance"
+
+        # ── Backend services this app actually calls ────────────────────────
+        # Five, all read from Shell's own ConfigMap so the values cannot drift.
+        # cash-advance and project resolve in-cluster; auth, person and
+        # file-orchestrator are public hostnames, matching the Shell exactly.
+        - name: CASHADVANCE_API_BASE_URL
+          valueFrom:
+            configMapKeyRef: { name: kss-client-web-cash-advance-config, key: cash-advance-api-base-url }
+        - name: AUTH_API_BASE_URL
+          valueFrom:
+            configMapKeyRef: { name: kss-client-web-cash-advance-config, key: auth-api-base-url }
+        - name: PERSON_API_BASE_URL
+          valueFrom:
+            configMapKeyRef: { name: kss-client-web-cash-advance-config, key: person-api-base-url }
+        - name: PROJECT_API_BASE_URL
+          valueFrom:
+            configMapKeyRef: { name: kss-client-web-cash-advance-config, key: project-api-base-url }
+        - name: FILE_ORCHESTRATOR_API_BASE_URL
+          valueFrom:
+            configMapKeyRef: { name: kss-client-web-cash-advance-config, key: file-orchestrator-api-base-url }
+
+        # ── Object storage ──────────────────────────────────────────────────
+        - name: STORAGE_ENDPOINT
+          valueFrom:
+            secretKeyRef: { name: kss-client-web-cash-advance-secrets, key: storage-endpoint, optional: true }
+        - name: STORAGE_REGION
+          valueFrom:
+            secretKeyRef: { name: kss-client-web-cash-advance-secrets, key: storage-region, optional: true }
+        - name: STORAGE_BUCKET
+          valueFrom:
+            secretKeyRef: { name: kss-client-web-cash-advance-secrets, key: storage-bucket, optional: true }
+        - name: STORAGE_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef: { name: kss-client-web-cash-advance-secrets, key: storage-access-key-id, optional: true }
+        - name: STORAGE_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef: { name: kss-client-web-cash-advance-secrets, key: storage-secret-access-key, optional: true }
+        - name: STORAGE_CDN_URL
+          valueFrom:
+            secretKeyRef: { name: kss-client-web-cash-advance-secrets, key: storage-cdn-url, optional: true }
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+        # ── Probes ──────────────────────────────────────────────────────────
+        # timeoutSeconds explicit on all three; the default is 1s and a cold
+        # start of a 49-page app will exceed it.
+        livenessProbe:
+          httpGet: { path: /cash-advance/api/health, port: 3000, scheme: HTTP }
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet: { path: /cash-advance/api/health, port: 3000, scheme: HTTP }
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /cash-advance/api/health, port: 3000, scheme: HTTP }
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 36
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop: [ALL]
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kss-client-web-cash-advance-service
+  namespace: kss-client-web-cash-advance
+  labels:
+    app: kss-client-web-cash-advance
+spec:
+  selector:
+    app: kss-client-web-cash-advance
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+---
+# Values copied verbatim from the Shell's kss-client-web-config so the two
+# cannot drift. Note person and file-orchestrator are PUBLIC hostnames while
+# cash-advance and project resolve in-cluster — that asymmetry is the Shell's,
+# not a mistake here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kss-client-web-cash-advance-config
+  namespace: kss-client-web-cash-advance
+data:
+  cash-advance-api-base-url: "http://kss-cash-advance-service-service.kss-cash-advance-service.svc.cluster.local"
+  project-api-base-url: "http://kss-project-service-service.kss-project-service.svc.cluster.local"
+  auth-api-base-url: "https://auth.api.sebaoffice.ir"
+  person-api-base-url: "https://person.api.sebaoffice.ir"
+  file-orchestrator-api-base-url: "https://fileorchestrator.api.sebaoffice.ir"
+---
+# ⚠ `nextauth-secret` IS NOT IN THIS FILE, AND MUST NOT BE ADDED TO IT.
+# See the NEXTAUTH_SECRET note above. Absent + non-optional is the loud
+# failure; empty would be the silent one, and a checked-in key would be
+# re-blanked by every `kubectl apply`.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kss-client-web-cash-advance-secrets
+  namespace: kss-client-web-cash-advance
+type: Opaque
+data:
+  storage-endpoint: ""
+  storage-region: ""
+  storage-bucket: ""
+  storage-access-key-id: ""
+  storage-secret-access-key: ""
+  storage-cdn-url: ""
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kss-client-web-cash-advance-pdb
+  namespace: kss-client-web-cash-advance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: kss-client-web-cash-advance
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kss-client-web-cash-advance-network-policy
+  namespace: kss-client-web-cash-advance
+spec:
+  podSelector:
+    matchLabels:
+      app: kss-client-web-cash-advance
+  policyTypes: [Ingress, Egress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: kss-client-web
+    ports:
+    - protocol: TCP
+      port: 3000
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - { protocol: TCP, port: 80 }
+    - { protocol: TCP, port: 443 }
+    - { protocol: TCP, port: 8000 }
