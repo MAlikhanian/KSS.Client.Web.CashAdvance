@@ -29,7 +29,7 @@ import {
   listFundTranslations,
   createFundTranslation,
   updateFundTranslation,
-  removeFundTranslation,
+  removeFundNameByKey,
 } from '@/lib/cash-advance/api/client';
 
 /** Language info from the Common service (GET /api/common/languages). */
@@ -185,15 +185,24 @@ export function FundNameGrid({ fundId }: FundNameGridProps) {
     if (langId === FA_LANGUAGE_ID) return;
     setBusy(true);
     try {
-      await removeFundTranslation({ cashAdvanceId: fundId, languageId: langId });
-      showToast(t('admin.funds.names.deleted', { defaultValue: 'Name deleted' }), 'error');
+      await removeFundNameByKey({ cashAdvanceId: fundId, languageId: langId });
+      showToast(t('admin.funds.names.deleted', { defaultValue: 'Name deleted' }), 'success');
       await loadRows();
     } catch (e) {
-      showToast(
-        (e as Error)?.message ||
-          t('admin.funds.names.deleteError', { defaultValue: 'Failed to delete name' }),
-        'error',
-      );
+      if ((e as Error)?.message === 'RECORD_NOT_FOUND') {
+        // Already deleted elsewhere: say so, then show the rows as they are now.
+        showToast(
+          t('RECORD_NOT_FOUND', { ns: 'api-errors', defaultValue: 'Record not found.' }),
+          'error',
+        );
+        await loadRows();
+      } else {
+        showToast(
+          (e as Error)?.message ||
+            t('admin.funds.names.deleteError', { defaultValue: 'Failed to delete name' }),
+          'error',
+        );
+      }
     } finally {
       setBusy(false);
     }

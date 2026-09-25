@@ -216,7 +216,7 @@ export function CashAdvanceRequestsContent() {
       >
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 lg:gap-7.5">
           {/* Main column */}
-          <div className="col-span-3">
+          <div className="xl:col-span-3">
             <Card>
               <CardContent className="py-5">
                 <div className="flex flex-wrap items-end justify-between gap-4 mb-5">

@@ -3,13 +3,18 @@
 import { ZoneLink } from '@/app/components/zone-link';
 
 import { ChevronFirst } from 'lucide-react';
-import { toAbsoluteUrl } from '@/lib/helpers';
+import { useTenant } from '@/providers/tenant-provider';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/providers/settings-provider';
 import { Button } from '@/components/ui/button';
 
 export function SidebarHeader() {
   const { settings, storeOption } = useSettings();
+  // Tenant artwork, resolved once per request in app/layout.tsx from x-kss-host.
+  // NOT passed through toAbsoluteUrl(): that prepends this zone's
+  // NEXT_PUBLIC_BASE_PATH, and tenant asset paths are root-relative on purpose so
+  // whichever host the visitor is on serves them. See lib/tenants.ts.
+  const tenant = useTenant();
 
   const handleToggleClick = () => {
     storeOption(
@@ -23,24 +28,24 @@ export function SidebarHeader() {
       <ZoneLink href="/">
         <div className="dark:hidden">
           <img
-            src={toAbsoluteUrl('/media/app/default-logo.svg')}
+            src={tenant.logo}
             className="default-logo h-[22px] max-w-none"
             alt="Default Logo"
           />
           <img
-            src={toAbsoluteUrl('/media/app/mini-logo.svg')}
+            src={tenant.logoMini}
             className="small-logo h-[22px] max-w-none"
             alt="Mini Logo"
           />
         </div>
         <div className="hidden dark:block">
           <img
-            src={toAbsoluteUrl('/media/app/default-logo-dark.svg')}
+            src={tenant.logoDark}
             className="default-logo h-[22px] max-w-none"
             alt="Default Dark Logo"
           />
           <img
-            src={toAbsoluteUrl('/media/app/mini-logo.svg')}
+            src={tenant.logoMini}
             className="small-logo h-[22px] max-w-none"
             alt="Mini Logo"
           />

@@ -17,7 +17,7 @@ export function Sidebar({ total, pending, approved }: SidebarProps) {
     {
       icon: <FileText className="w-5 h-5 text-white" />,
       bg: 'bg-amber-500',
-      label: t('ops.invoiceView.stats.total', { defaultValue: 'My Invoices' }),
+      label: t('ops.invoiceView.stats.total', { defaultValue: 'Total' }),
       value: total,
     },
     {
@@ -37,7 +37,7 @@ export function Sidebar({ total, pending, approved }: SidebarProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('ops.invoiceView.title', { defaultValue: 'My Invoices' })}</CardTitle>
+        <CardTitle>{t('ops.invoiceView.title', { defaultValue: 'Invoices' })}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">

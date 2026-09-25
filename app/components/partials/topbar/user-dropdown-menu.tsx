@@ -16,8 +16,9 @@ import {
   UserCircle,
   Users,
 } from 'lucide-react';
-import { signOut, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
+import { signOutToTenant } from '@/lib/auth-signout';
 import { useLanguage } from '@/providers/i18n-provider';
 import { useSettings } from '@/providers/settings-provider';
 import { useTranslation } from 'react-i18next';
@@ -254,7 +255,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => signOut()}
+            onClick={() => signOutToTenant()}
           >
             {t('userMenu.logout')}
           </Button>

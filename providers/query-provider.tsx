@@ -20,8 +20,8 @@ async function handleUnauthorized(error: Error) {
     error.message?.includes('401') ||
     error.message?.includes('Unauthorized')
   ) {
-    const { signOut } = await import('next-auth/react');
-    signOut({ callbackUrl: '/signin', redirect: true });
+    const { signOutToTenant } = await import('@/lib/auth-signout');
+    signOutToTenant();
     return true;
   }
   return false;

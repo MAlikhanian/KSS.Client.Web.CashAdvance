@@ -52,6 +52,7 @@ import type {
   TransactionView,
   TransactionInsert,
   TransactionUpdate,
+  FlowTypeView,
 } from '@/services/cash-advance-api';
 import type {
   WorksiteView,
@@ -106,6 +107,7 @@ export type {
   TransactionView,
   TransactionInsert,
   TransactionUpdate,
+  FlowTypeView,
   WorksiteView,
   WorksiteTranslationView,
   ProjectView,
@@ -208,6 +210,17 @@ export const removeFundTranslation = (
   entity: CashAdvanceTranslationView | { cashAdvanceId: string; languageId: number },
 ) => http<void>('DELETE', '/cash-advance-translations', entity);
 
+// ── Keyed deletes (by key only) ──
+// Use these for deleting products, product names and fund names; the remove* wrappers above
+// go through the generic Remove route, which is rejected for these rows. A product delete
+// also deletes its names on the server, so callers make one call.
+export const removeProductByKey = (key: { id: string }) =>
+  http<void>('DELETE', '/keyed-delete/product', key);
+export const removeProductNameByKey = (key: { productId: string; languageId: number }) =>
+  http<void>('DELETE', '/keyed-delete/product-name', key);
+export const removeFundNameByKey = (key: { cashAdvanceId: string; languageId: number }) =>
+  http<void>('DELETE', '/keyed-delete/fund-name', key);
+
 // ── In-charges (CashAdvanceInCharge) ──
 export const listInCharges = () => http<CashAdvanceInChargeView[]>('GET', '/in-charges');
 export const createInCharge = (dto: CashAdvanceInChargeInsert) =>
@@ -306,6 +319,9 @@ export const removeInvoiceItemLink = (
 export const listTransactions = () => http<TransactionView[]>('GET', '/transactions');
 export const createTransaction = (dto: TransactionInsert) =>
   http<TransactionView>('POST', '/transactions', dto);
+
+// ── Flow types (read only; the one list the server also validates against) ──
+export const listFlowTypes = () => http<FlowTypeView[]>('GET', '/flow-types');
 
 // ── Documents (stored-file metadata) + upload/download (→ FileOrchestrator) ──
 export const listCashAdvanceDocuments = () => http<DocumentView[]>('GET', '/documents');

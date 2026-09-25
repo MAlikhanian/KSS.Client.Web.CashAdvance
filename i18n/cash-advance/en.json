@@ -812,6 +812,8 @@
         "fundRequired": "Fund is required",
         "itemsRequired": "Select at least one item",
         "amountRequired": "Invoice amount is required",
+        "invoiceNumberRequired": "Invoice number is required",
+        "invoiceDateRequired": "Invoice date is required",
         "documentsRequired": "Attach at least one invoice document"
       },
       "toasts": {
@@ -820,8 +822,8 @@
       }
     },
     "invoiceView": {
-      "title": "My Invoices",
-      "description": "Invoices you have submitted — track their finance and CEO approval status.",
+      "title": "Invoices",
+      "description": "Track finance and CEO approval status.",
       "filters": {
         "fund": "Fund",
         "allFunds": "All funds",
@@ -845,11 +847,44 @@
         "status": "Status",
         "actions": "Actions"
       },
-      "empty": "You have not submitted any invoices yet.",
+      "empty": "No invoices yet",
       "stats": {
         "total": "Total",
         "pending": "Pending",
         "approved": "Approved"
+      }
+    },
+    "coverSheet": {
+      "title": "Cash Advance Cover Sheet",
+      "description": "CEO-approved invoices for a fund over a period, oldest first.",
+      "filters": {
+        "fund": "Fund",
+        "fromDate": "From Date",
+        "toDate": "To Date"
+      },
+      "columns": {
+        "row": "#",
+        "check": "✓",
+        "invoiceNumber": "Invoice #",
+        "date": "Date",
+        "fund": "Fund",
+        "project": "Project",
+        "description": "Description",
+        "amount": "Amount"
+      },
+      "empty": "No invoices in this period",
+      "emptyUnapproved": "Invoices exist in this period, but none are CEO-approved.",
+      "total": "Total",
+      "print": "Print",
+      "allFunds": "All funds",
+      "signatures": {
+        "ceo": "CEO",
+        "worksiteSupervisor": "Worksite Supervisor",
+        "fundInCharge": "Fund In Charge"
+      },
+      "undated": {
+        "title": "Invoices with no date",
+        "hint": "These carry no invoice date, so they fall in no period and are not counted in the total."
       }
     },
     "ledger": {
@@ -862,11 +897,10 @@
         "transactionDate": "Date",
         "fund": "Fund",
         "person": "Person",
-        "flowType": "Flow Type",
-        "direction": "Direction",
+        "flowType": "Settlement Type",
+        "direction": "Nature",
         "amount": "Amount",
         "balanceAfter": "Balance After",
-        "sourceType": "Source",
         "description": "Description"
       },
       "filters": {
@@ -874,23 +908,34 @@
         "allFunds": "All funds",
         "person": "Person",
         "allPersons": "All persons",
-        "direction": "Direction",
-        "allDirections": "All directions",
-        "flowType": "Flow Type",
-        "allFlowTypes": "All flow types",
+        "direction": "Nature",
+        "allDirections": "All natures",
+        "flowType": "Settlement Type",
+        "allFlowTypes": "All settlement types",
+        "fromDate": "From Date",
+        "toDate": "To Date",
         "search": "Search"
       },
-      "directionIn": "In",
-      "directionOut": "Out",
+      "directionIn": "Credit entry",
+      "directionOut": "Debit entry",
+      "balanceCreditor": "Creditor",
+      "balanceDebtor": "Debtor",
+      "balanceTitle": "Per-Person Balance",
+      "balanceCol": "Running balance",
+      "noLimit": "No limit",
+      "overLimit": "At / over limit",
+      "withinLimit": "Within limit",
       "form": {
         "fund": "Fund",
         "fundPlaceholder": "Select a fund",
         "person": "Person",
         "personPlaceholder": "Select a person",
-        "flowType": "Flow Type",
-        "flowTypePlaceholder": "e.g. Payment, Invoice, Settlement",
-        "direction": "Direction",
-        "directionPlaceholder": "In or Out",
+        "flowType": "Settlement Type",
+        "flowTypeSelectPlaceholder": "Select a type",
+        "flowTypeHint": "If the type you need is not in this list, write the actual type in Description.",
+        "flowTypesUnavailable": "Flow types could not be loaded, so an entry can't be recorded right now.",
+        "direction": "Nature",
+        "directionPlaceholder": "Credit or debit entry",
         "amount": "Amount",
         "amountPlaceholder": "Enter amount",
         "balanceAfter": "Balance After",
@@ -908,7 +953,9 @@
         "flowTypeRequired": "Flow type is required",
         "directionRequired": "Direction is required",
         "amountRequired": "Amount is required",
-        "dateRequired": "Transaction date is required"
+        "dateRequired": "Transaction date is required",
+        "invalidFlowType": "This flow type is not accepted. Choose one from the list.",
+        "invalidDirection": "This nature is not accepted. Choose credit or debit."
       },
       "toasts": {
         "created": "Ledger entry recorded"
@@ -979,6 +1026,9 @@
       "validation": {
         "codeRequired": "Code is required",
         "nameRequired": "At least one name is required"
+      },
+      "errors": {
+        "inUse": "This item is in use and can't be deleted."
       }
     },
     "statuses": {

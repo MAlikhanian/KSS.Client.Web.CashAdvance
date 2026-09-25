@@ -38,11 +38,11 @@ import {
   listProducts,
   createProduct,
   updateProduct,
-  removeProduct,
+  removeProductByKey,
   listProductTranslations,
   createProductTranslation,
   updateProductTranslation,
-  removeProductTranslation,
+  removeProductNameByKey,
   type ProductView,
   type ProductTranslationView,
 } from '@/lib/cash-advance/api/client';
@@ -141,7 +141,12 @@ export function CashAdvanceAdminProductsContent() {
         await createProductTranslation({ productId, languageId, name });
       }
     } else if (existing) {
-      await removeProductTranslation({ productId, languageId });
+      try {
+        await removeProductNameByKey({ productId, languageId });
+      } catch (e) {
+        // Already gone: the save wants no name in this language, and that is the state.
+        if ((e as Error)?.message !== 'RECORD_NOT_FOUND') throw e;
+      }
     }
   };
 
@@ -210,15 +215,25 @@ export function CashAdvanceAdminProductsContent() {
       return;
     }
     try {
-      const productTranslations = translations.filter((tr) => tr.productId === product.id);
-      for (const tr of productTranslations) {
-        await removeProductTranslation({ productId: tr.productId, languageId: tr.languageId });
-      }
-      await removeProduct({ id: product.id });
+      // One call: the server deletes the product's names in the same transaction.
+      await removeProductByKey({ id: product.id });
       showSuccess(t('admin.common.toasts.deleted', { defaultValue: 'Deleted successfully' }));
       await refresh();
-    } catch {
-      showError(t('admin.common.toasts.deleteError', { defaultValue: 'Failed to delete' }));
+    } catch (e) {
+      const message = (e as Error)?.message;
+      if (message === 'PRODUCT_IN_USE') {
+        showError(
+          t('admin.products.errors.inUse', {
+            defaultValue: "This item is in use and can't be deleted.",
+          }),
+        );
+      } else if (message === 'RECORD_NOT_FOUND') {
+        // Already deleted elsewhere: say so, then show the list as it is now.
+        showError(t('RECORD_NOT_FOUND', { ns: 'api-errors', defaultValue: 'Record not found.' }));
+        await refresh();
+      } else {
+        showError(t('admin.common.toasts.deleteError', { defaultValue: 'Failed to delete' }));
+      }
     }
   };
 

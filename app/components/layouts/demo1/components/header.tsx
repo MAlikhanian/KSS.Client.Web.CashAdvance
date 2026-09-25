@@ -19,7 +19,7 @@ import {
   SquareChevronRight,
   User,
 } from 'lucide-react';
-import { toAbsoluteUrl } from '@/lib/helpers';
+import { useTenant } from '@/providers/tenant-provider';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useScrollPosition } from '@/hooks/use-scroll-position';
@@ -42,6 +42,8 @@ export function Header() {
   const [isSidebarSheetOpen, setIsSidebarSheetOpen] = useState(false);
   const [isMegaMenuSheetOpen, setIsMegaMenuSheetOpen] = useState(false);
   const profilePhotoUrl = useProfilePhoto();
+  // Tenant artwork; root-relative by design, see sidebar-header.tsx.
+  const tenant = useTenant();
 
   const pathname = usePathname();
   const mobileMode = useIsMobile();
@@ -67,7 +69,7 @@ export function Header() {
         <div className="flex gap-1 lg:hidden items-center gap-2.5">
           <ZoneLink href="/" className="shrink-0">
             <img
-              src={toAbsoluteUrl('/media/app/mini-logo.svg')}
+              src={tenant.logoMini}
               className="h-[25px] w-full"
               alt="mini-logo"
             />
@@ -129,7 +131,7 @@ export function Header() {
 
         {/* HeaderTopbar */}
         <div className="flex items-center gap-3">
-          <CompanyPicker />
+          {!tenant.companyId && <CompanyPicker />}
           {/* Kit: the store-client branch is omitted — a domain app runs under
               its own basePath, so that path can never match. */}
           <>

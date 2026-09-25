@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { useTenant } from '@/providers/tenant-provider';
+
 export interface CompanyOption {
   id: string;
   name: string;
@@ -20,6 +22,8 @@ interface CurrentCompanyContextValue {
   currentCompany: CompanyOption | null;
   setCurrentCompany: (id: string) => void;
   loading: boolean;
+  /** True when the hostname decides the company and the user cannot change it. */
+  tenantBound: boolean;
 }
 
 const CurrentCompanyContext = createContext<CurrentCompanyContextValue | null>(null);
@@ -39,6 +43,11 @@ function writeCookie(name: string, value: string) {
 }
 
 export function CurrentCompanyProvider({ children }: { children: ReactNode }) {
+  // When the host is bound to a company, the hostname decides and the user's
+  // saved choice is ignored. See lib/tenants.ts — this is not a security
+  // boundary; the Person service must enforce it.
+  const boundCompanyId = useTenant().companyId;
+
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +64,17 @@ export function CurrentCompanyProvider({ children }: { children: ReactNode }) {
         const saved =
           readCookie(COOKIE_NAME) ??
           (typeof localStorage !== 'undefined' ? localStorage.getItem(COOKIE_NAME) : null);
-        const chosen = saved && list.some((c) => c.id === saved) ? saved : list[0]?.id ?? null;
+
+        // Bound host: take the tenant's company even when the user is not a
+        // member of it. Falling back to a company they DO belong to would
+        // serve one tenant's data under another tenant's hostname, so this
+        // fails closed — the request goes out scoped to the host's company
+        // and the backend refuses it.
+        const chosen = boundCompanyId
+          ? boundCompanyId
+          : saved && list.some((c) => c.id === saved)
+            ? saved
+            : list[0]?.id ?? null;
 
         setCurrentCompanyId(chosen);
         if (chosen) {
@@ -75,10 +94,12 @@ export function CurrentCompanyProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [boundCompanyId]);
 
   const setCurrentCompany = useCallback(
     (id: string) => {
+      // A bound host owns the selection; ignore any attempt to switch.
+      if (boundCompanyId) return;
       if (id === currentCompanyId) return;
       writeCookie(COOKIE_NAME, id);
       try {
@@ -90,14 +111,21 @@ export function CurrentCompanyProvider({ children }: { children: ReactNode }) {
       // Reload so server components + BFF calls pick up the new cookie.
       window.location.reload();
     },
-    [currentCompanyId],
+    [currentCompanyId, boundCompanyId],
   );
 
   const currentCompany = companies.find((c) => c.id === currentCompanyId) ?? null;
 
   return (
     <CurrentCompanyContext.Provider
-      value={{ companies, currentCompanyId, currentCompany, setCurrentCompany, loading }}
+      value={{
+        companies,
+        currentCompanyId,
+        currentCompany,
+        setCurrentCompany,
+        loading,
+        tenantBound: Boolean(boundCompanyId),
+      }}
     >
       {children}
     </CurrentCompanyContext.Provider>

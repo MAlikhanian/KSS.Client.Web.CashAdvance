@@ -427,7 +427,7 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
           '[&_div.rounded-xl.bg-card]:shadow-black/5'
         }
       >
-        <div className="col-span-3 grid gap-5 lg:gap-7.5">
+        <div className="xl:col-span-3 grid gap-5 lg:gap-7.5">
           {/* Request information */}
           <Card>
             <CardHeader>

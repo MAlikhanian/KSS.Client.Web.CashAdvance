@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
 import { Eye, Pencil } from 'lucide-react';
 import { RiErrorWarningFill } from '@remixicon/react';
@@ -107,7 +106,6 @@ export function InvoiceViewContent() {
   const { t } = useTranslation('cash-advance');
   const { language } = useLanguage();
   const langId = language.code === 'en' ? EN : FA;
-  const { data: session } = useSession();
   const { hasPermission } = usePermission();
   const canRead = hasPermission(['CashAdvance.Invoice.Read']);
 
@@ -139,17 +137,11 @@ export function InvoiceViewContent() {
     loadAll();
   }, [loadAll]);
 
-  // Approvers/admins see every factor; everyone else only their own submissions.
-  const personId = session?.user?.personId ?? '';
-  const isSuperAdmin = session?.user?.roles?.includes('SuperAdmin') ?? false;
-  const canSeeAll =
-    isSuperAdmin ||
-    hasPermission(['CashAdvance.Approval.Ceo', 'CashAdvance.Approval.FinancialManager']);
-  const mine = useMemo(
-    () =>
-      canSeeAll ? invoices : invoices.filter((i) => personId && i.createdBy === personId),
-    [invoices, personId, canSeeAll],
-  );
+  // Scope is the server's. /Api/CashAdvanceScopedRead/ListInvoices returns every invoice to a
+  // caller holding CashAdvance.Invoice.ReadAll and only their own to everyone else, so this list
+  // is already correct for whoever is asking. Do NOT reintroduce a client-side owner filter
+  // here: it would be cosmetic, and it would hide rows from the roles ReadAll exists to serve.
+  const mine = invoices;
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -203,12 +195,11 @@ export function InvoiceViewContent() {
           <Toolbar>
             <ToolbarHeading>
               <ToolbarPageTitle
-                text={t('ops.invoiceView.title', { defaultValue: 'My Invoices' })}
+                text={t('ops.invoiceView.title', { defaultValue: 'Invoices' })}
               />
               <ToolbarDescription>
                 {t('ops.invoiceView.description', {
-                  defaultValue:
-                    'Invoices you submitted against cash advance funds — track their two-stage approval.',
+                  defaultValue: 'Track finance and CEO approval status.',
                 })}
               </ToolbarDescription>
             </ToolbarHeading>
@@ -229,7 +220,7 @@ export function InvoiceViewContent() {
       >
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 lg:gap-7.5">
           {/* Main column */}
-          <div className="col-span-3">
+          <div className="xl:col-span-3">
             <Card>
               <CardContent className="py-5">
                 <div className="flex flex-wrap items-end justify-between gap-4 mb-5">

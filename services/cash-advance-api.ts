@@ -257,6 +257,27 @@ export const removeCashAdvanceTranslation = (
 ) => req<void>(token, 'DELETE', `/Api/CashAdvanceTranslation/Remove`, entity);
 
 // ============================================
+// KeyedDelete — delete by key only (DELETE /Api/KeyedDelete/{Target}, 204 on success)
+// ============================================
+// Use these, not the generic Remove routes above, for products, product names and fund
+// names: Remove binds the full entity and is rejected for these rows. Error codes arrive as
+// { message: CODE }: RECORD_NOT_FOUND on all three, PRODUCT_IN_USE on the product route.
+// Deleting a product also deletes its names, in the same server transaction.
+
+export const keyedDeleteProduct = (token: string, key: { id: string }) =>
+  req<void>(token, 'DELETE', `/Api/KeyedDelete/Product`, key);
+
+export const keyedDeleteProductName = (
+  token: string,
+  key: { productId: string; languageId: number },
+) => req<void>(token, 'DELETE', `/Api/KeyedDelete/ProductName`, key);
+
+export const keyedDeleteFundName = (
+  token: string,
+  key: { cashAdvanceId: string; languageId: number },
+) => req<void>(token, 'DELETE', `/Api/KeyedDelete/FundName`, key);
+
+// ============================================
 // CashAdvanceInCharge — GUID key, history rows (current = toDate null)
 // ============================================
 
@@ -536,8 +557,11 @@ export interface InvoiceUpdate {
   approvalState?: string | null;
 }
 
+// Row-level scoped: every invoice only for callers holding CashAdvance.Invoice.ReadAll; a
+// submitter gets only their own. Do NOT switch this back to /Api/Invoice/ToListAll — that
+// endpoint returns everyone's rows. The scoping is the server's; the client must not re-filter.
 export const listInvoices = (token: string) =>
-  req<InvoiceView[]>(token, 'GET', `/Api/Invoice/ToListAll`);
+  req<InvoiceView[]>(token, 'GET', `/Api/CashAdvanceScopedRead/ListInvoices`);
 
 export const createInvoice = (token: string, dto: InvoiceInsert) =>
   req<InvoiceView>(token, 'POST', `/Api/Invoice/AddDto`, dto);
@@ -704,6 +728,18 @@ export const updateTransaction = (token: string, dto: TransactionUpdate) =>
 
 export const removeTransaction = (token: string, entity: TransactionView | { id: string }) =>
   req<void>(token, 'DELETE', `/Api/CashAdvanceTransaction/Remove`, entity);
+
+// Flow types: the ONE list of accepted FlowType codes, with display names, owned by the
+// backend. The same list is what the server validates against, so the form cannot offer a
+// value the server refuses. Read only.
+export interface FlowTypeView {
+  code: string;
+  nameEn: string;
+  nameFa: string;
+}
+
+export const listFlowTypes = (token: string) =>
+  req<FlowTypeView[]>(token, 'GET', `/Api/CashAdvanceTransaction/FlowTypes`);
 
 // ============================================
 // Workflow (CashAdvanceWorkflowController) — per-actor, permission-gated actions

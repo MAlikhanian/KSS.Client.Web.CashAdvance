@@ -235,6 +235,11 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
     if (!cashAdvanceId) return showError(t('ops.invoiceSubmit.validation.fundRequired', { defaultValue: 'Fund is required' }));
     if (selectedItemIds.size === 0) return showError(t('ops.invoiceSubmit.validation.itemsRequired', { defaultValue: 'Select at least one item' }));
     if (!invoiceAmount || invoiceAmount <= 0) return showError(t('ops.invoiceSubmit.validation.amountRequired', { defaultValue: 'Invoice amount is required' }));
+    // Fast feedback only — NOT the enforcement. The control BELONGS on the DTO ([Required])
+    // and the domain error on the service guard; this check exists so the user is told before
+    // a round trip rather than after one. Three layers, three different jobs.
+    if (!invoiceNumber.trim()) return showError(t('ops.invoiceSubmit.validation.invoiceNumberRequired', { defaultValue: 'Invoice number is required' }));
+    if (!invoiceDate) return showError(t('ops.invoiceSubmit.validation.invoiceDateRequired', { defaultValue: 'Invoice date is required' }));
     const totalDocs = (isEdit ? existingDocs.length : 0) + files.length;
     if (totalDocs === 0) return showError(t('ops.invoiceSubmit.validation.documentsRequired', { defaultValue: 'Attach at least one invoice document' }));
     setSaving(true);
@@ -245,9 +250,13 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
         await updateInvoiceFull({
           invoiceId: editId,
           cashAdvanceId,
-          invoiceNumber: invoiceNumber.trim() || null,
+          // Both are guaranteed non-empty by the guards above, so the previous `|| null` and
+          // ternary could only ever send null after the guard was removed — dead today and
+          // misleading tomorrow. The UPDATE path coerced and the CREATE path did not; they
+          // now agree. Keep them in step if either changes.
+          invoiceNumber: invoiceNumber.trim(),
           invoiceAmount,
-          invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
+          invoiceDate: new Date(invoiceDate).toISOString(),
           description: description.trim() || null,
           documentIds: [...existingDocs.map((d) => d.documentId), ...newDocumentIds],
           chargeRequestItemIds: Array.from(selectedItemIds),
@@ -259,7 +268,7 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
           cashAdvanceId,
           invoiceNumber: invoiceNumber.trim(),
           invoiceAmount,
-          invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
+          invoiceDate: new Date(invoiceDate).toISOString(),
           description: description.trim() || null,
           documentIds: newDocumentIds,
           chargeRequestItemIds: Array.from(selectedItemIds),
@@ -371,7 +380,10 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
                   </div>
 
                   <div className="space-y-2">
-                    <Label>{t('ops.invoiceSubmit.invoiceNumber', { defaultValue: 'Invoice #' })}</Label>
+                    <Label>
+                      {t('ops.invoiceSubmit.invoiceNumber', { defaultValue: 'Invoice #' })}{' '}
+                      <span className="text-destructive">*</span>
+                    </Label>
                     <Input
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
@@ -392,7 +404,10 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
                   </div>
 
                   <div className="space-y-2">
-                    <Label>{t('ops.invoiceSubmit.invoiceDate', { defaultValue: 'Invoice Date' })}</Label>
+                    <Label>
+                      {t('ops.invoiceSubmit.invoiceDate', { defaultValue: 'Invoice Date' })}{' '}
+                      <span className="text-destructive">*</span>
+                    </Label>
                     <DatePickerComponent
                       value={invoiceDate}
                       onChange={setInvoiceDate}

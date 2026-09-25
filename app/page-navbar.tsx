@@ -23,6 +23,16 @@ const PageNavbar = () => {
         { title: t('navAdminFundsView', { defaultValue: 'View Cash' }), path: '/cash-advance/funds/view' },
         { title: t('navAdminFundsAdd', { defaultValue: 'Add Cash' }), path: '/cash-advance/funds/create' },
         { title: t('navAdminFundsUpdate', { defaultValue: 'Update Cash' }), path: '/cash-advance/funds/update' },
+        // Placement, parent and label all specified by the customer (2026-09-06): right-side
+        // menu, under the تنخواه subsection, labelled روکش تنخواه. Reuses ops.coverSheet.title
+        // rather than minting a nav* key, so the menu label and the page heading cannot drift.
+        //
+        // Deliberately NOT permission-gated, because NOTHING in this navbar is — Products,
+        // Funds and Person Limits are all admin screens rendered for every user of the zone.
+        // Gating this one item alone would be inconsistent and would need a mechanism the
+        // navbar does not have. The ungated navbar is a real finding; it is not this entry's
+        // to fix, and fixing it here would be scope creep on a customer request.
+        { title: t('ops.coverSheet.title', { defaultValue: 'Cover Sheet' }), path: '/cash-advance/invoice/cover' },
       ],
     },
     { title: t('navAdminPersonLimits', { defaultValue: 'Person Limits' }), path: '/cash-advance/person-limits' },

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
+import { signOutToTenant } from '@/lib/auth-signout';
 
 /**
  * TokenExpiryGuard
@@ -30,7 +31,7 @@ export function TokenExpiryGuard() {
 
     if (now >= expiresAt - bufferMs) {
       isSigningOut.current = true;
-      signOut({ callbackUrl: '/signin', redirect: true });
+      signOutToTenant();
     }
   }, [session, status]);
 

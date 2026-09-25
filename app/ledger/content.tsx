@@ -52,12 +52,15 @@ import {
   listFundTranslations,
   listPersons,
   listPersonLimits,
+  listFlowTypes,
+  type FlowTypeView,
   type TransactionView,
   type CashAdvanceView,
   type CashAdvanceTranslationView,
   type PersonDirectoryRecord,
   type CashAdvancePersonView,
 } from '@/lib/cash-advance/api/client';
+import { flowTypeDisplay, INVALID_DIRECTION, INVALID_FLOW_TYPE } from './flow-types';
 import { PersonPicker, personDisplayName } from './components/person-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -97,6 +100,9 @@ function showError(msg: string) {
 function isInflow(direction: string | null | undefined): boolean {
   return (direction ?? '').trim().toLowerCase() === 'in';
 }
+
+/** transactionDate is written as a full ISO string; compare on the date part only. */
+const dayOf = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : '');
 
 interface Draft {
   cashAdvanceId: string;
@@ -150,12 +156,18 @@ export function CashAdvanceLedgerContent() {
   const [fundTranslations, setFundTranslations] = useState<CashAdvanceTranslationView[]>([]);
   const [persons, setPersons] = useState<PersonDirectoryRecord[]>([]);
   const [personLimits, setPersonLimits] = useState<CashAdvancePersonView[]>([]);
+  // The accepted flow types, served by the backend with their display names (see ./flow-types).
+  const [flowTypeList, setFlowTypeList] = useState<FlowTypeView[]>([]);
+  const [flowTypesFailed, setFlowTypesFailed] = useState(false);
+  const lang = langId === EN ? 'en' : 'fa';
 
   // filters
   const [fundFilter, setFundFilter] = useState<string>(ALL);
   const [personFilter, setPersonFilter] = useState<string | null>(null);
   const [directionFilter, setDirectionFilter] = useState<string>(ALL);
   const [flowTypeFilter, setFlowTypeFilter] = useState<string>(ALL);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
 
   // create dialog
@@ -186,6 +198,29 @@ export function CashAdvanceLedgerContent() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  // Flow types load on their own, NOT inside loadAll's all-or-nothing Promise.all. If the list
+  // is unavailable (a backend without the endpoint, or any failure), the ledger still loads:
+  // stored values show as-is and only recording a new entry is blocked, so nothing is ever
+  // written with a guessed type. An empty list is treated the same way: there is nothing valid
+  // to choose, so the form says so instead of offering an empty picker.
+  useEffect(() => {
+    let cancelled = false;
+    listFlowTypes()
+      .then((list) => {
+        if (cancelled) return;
+        setFlowTypeList(list);
+        setFlowTypesFailed(list.length === 0);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFlowTypeList([]);
+        setFlowTypesFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ── resolvers ──
   const fundName = useCallback(
@@ -230,6 +265,18 @@ export function CashAdvanceLedgerContent() {
     return Array.from(set).sort();
   }, [transactions]);
 
+  /**
+   * Display names come from the served flow-type list, not from this app's i18n: the list
+   * carries each code's name in both languages, including wording that is the customer's own
+   * rather than a literal translation (kept, with its reason, beside the list on the backend).
+   * Do not re-add local names here — a second copy is exactly what drifts. A stored value not
+   * in the list falls through unchanged rather than being hidden.
+   */
+  const flowTypeLabel = useCallback(
+    (value: string | null | undefined): string => flowTypeDisplay(flowTypeList, value, lang),
+    [flowTypeList, lang],
+  );
+
   // transactions narrowed to the selected fund (basis for the balance summary)
   const fundScoped = useMemo(
     () =>
@@ -243,6 +290,18 @@ export function CashAdvanceLedgerContent() {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return fundScoped
+      .filter((tx) => {
+        // No bound set means no date filtering at all. Deliberately NOT the cover sheet's
+        // predicate, which drops undated rows unconditionally — that page lists them in a
+        // separate section, and this one has nowhere to show them, so copying it verbatim
+        // would hide rows whenever both pickers were empty.
+        if (!fromDate && !toDate) return true;
+        const d = dayOf(tx.transactionDate);
+        if (!d) return false;
+        if (fromDate && d < fromDate) return false;
+        if (toDate && d > toDate) return false;
+        return true;
+      })
       .filter((tx) => (personFilter ? tx.personId === personFilter : true))
       .filter((tx) =>
         directionFilter === ALL
@@ -272,6 +331,8 @@ export function CashAdvanceLedgerContent() {
     personFilter,
     directionFilter,
     flowTypeFilter,
+    fromDate,
+    toDate,
     search,
     fundName,
     personName,
@@ -330,6 +391,14 @@ export function CashAdvanceLedgerContent() {
       showError(t('ops.ledger.validation.personRequired', { defaultValue: 'Person is required' }));
       return;
     }
+    if (flowTypesFailed) {
+      showError(
+        t('ops.ledger.form.flowTypesUnavailable', {
+          defaultValue: "Flow types could not be loaded, so an entry can't be recorded right now.",
+        }),
+      );
+      return;
+    }
     if (!draft.flowType.trim()) {
       showError(t('ops.ledger.validation.flowTypeRequired', { defaultValue: 'Flow type is required' }));
       return;
@@ -366,10 +435,22 @@ export function CashAdvanceLedgerContent() {
       setDraft(null);
       await loadAll();
     } catch (e) {
-      showError(
-        (e as Error)?.message ||
-          t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }),
-      );
+      const message = (e as Error)?.message;
+      if (message === INVALID_FLOW_TYPE) {
+        showError(
+          t('ops.ledger.validation.invalidFlowType', {
+            defaultValue: 'This flow type is not accepted. Choose one from the list.',
+          }),
+        );
+      } else if (message === INVALID_DIRECTION) {
+        showError(
+          t('ops.ledger.validation.invalidDirection', {
+            defaultValue: 'This nature is not accepted. Choose credit or debit.',
+          }),
+        );
+      } else {
+        showError(message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }));
+      }
     } finally {
       setSaving(false);
     }
@@ -405,8 +486,13 @@ export function CashAdvanceLedgerContent() {
         }
       >
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 lg:gap-7.5">
-          {/* Main column */}
-          <div className="col-span-3">
+          {/* Main column.
+              The span is xl: ONLY, matching the xl: on the container's column count. A bare
+              `col-span-3` asks for three columns in the `grid-cols-1` that applies below xl,
+              which makes the grid generate two IMPLICIT auto-width columns and lets this
+              column's content exceed the container instead of stacking. Do not "tidy" the
+              prefix away. */}
+          <div className="xl:col-span-3">
             <div className="grid gap-5 lg:gap-7.5">
               {/* Filters + ledger table */}
               <Card>
@@ -477,11 +563,26 @@ export function CashAdvanceLedgerContent() {
                           </SelectItem>
                           {flowTypes.map((ftype) => (
                             <SelectItem key={ftype} value={ftype}>
-                              {ftype}
+                              {flowTypeLabel(ftype)}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>{t('ops.ledger.filters.fromDate', { defaultValue: 'From Date' })}</Label>
+                      <DatePickerComponent value={fromDate} onChange={setFromDate} forcePersian />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>{t('ops.ledger.filters.toDate', { defaultValue: 'To Date' })}</Label>
+                      <DatePickerComponent
+                        value={toDate}
+                        onChange={setToDate}
+                        minDate={fromDate ? new Date(fromDate) : undefined}
+                        forcePersian
+                      />
                     </div>
 
                     <div className="space-y-1 md:col-span-2 xl:col-span-1">
@@ -527,9 +628,6 @@ export function CashAdvanceLedgerContent() {
                             {t('ops.ledger.columns.balanceAfter', { defaultValue: 'Balance After' })}
                           </TableHead>
                           <TableHead>
-                            {t('ops.ledger.columns.sourceType', { defaultValue: 'Source' })}
-                          </TableHead>
-                          <TableHead>
                             {t('ops.ledger.columns.description', { defaultValue: 'Description' })}
                           </TableHead>
                         </TableRow>
@@ -542,7 +640,7 @@ export function CashAdvanceLedgerContent() {
                             </TableCell>
                             <TableCell>{fundName(tx.cashAdvanceId)}</TableCell>
                             <TableCell>{personName(tx.personId)}</TableCell>
-                            <TableCell>{tx.flowType}</TableCell>
+                            <TableCell>{flowTypeLabel(tx.flowType)}</TableCell>
                             <TableCell className="text-center">
                               {isInflow(tx.direction) ? (
                                 <Badge variant="success" appearance="light">
@@ -560,9 +658,6 @@ export function CashAdvanceLedgerContent() {
                             <TableCell className="text-end whitespace-nowrap text-muted-foreground">
                               {formatRial(tx.balanceAfter)}
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {tx.sourceType ?? '—'}
-                            </TableCell>
                             <TableCell className="max-w-[16rem] truncate">
                               {tx.description ?? '—'}
                             </TableCell>
@@ -570,7 +665,7 @@ export function CashAdvanceLedgerContent() {
                         ))}
                         {filteredRows.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                               {t('ops.ledger.empty', { defaultValue: 'No ledger entries yet' })}
                             </TableCell>
                           </TableRow>
@@ -597,14 +692,24 @@ export function CashAdvanceLedgerContent() {
                           <TableHead>
                             {t('admin.personLimits.columns.nationalId', { defaultValue: 'National ID' })}
                           </TableHead>
+                          {/* DECOUPLED FROM THE LEDGER BADGES ON PURPOSE — DO NOT MERGE
+                              THESE BACK ONTO ops.ledger.directionIn / directionOut.
+                              These headers describe a PERSON'S STATE: بستانکار / بدهکار.
+                              The badges in the table above describe an ENTRY'S NATURE:
+                              بستانکاری / بدهکاری. The two differ by a single letter (ی) and
+                              are genuinely different words, so anyone tidying this file will
+                              read one pair as a typo of the other and "fix" it. They shared
+                              one key until item 6; changing the shared value to suit either
+                              screen silently corrupted the other, which is why they are now
+                              separate keys rather than one. */}
                           <TableHead className="text-end">
-                            {t('ops.ledger.directionIn', { defaultValue: 'In' })}
+                            {t('ops.ledger.balanceCreditor', { defaultValue: 'Creditor' })}
                           </TableHead>
                           <TableHead className="text-end">
-                            {t('ops.ledger.directionOut', { defaultValue: 'Out' })}
+                            {t('ops.ledger.balanceDebtor', { defaultValue: 'Debtor' })}
                           </TableHead>
                           <TableHead className="text-end">
-                            {t('ops.ledger.balanceCol', { defaultValue: 'Balance' })}
+                            {t('ops.ledger.balanceCol', { defaultValue: 'Running balance' })}
                           </TableHead>
                           <TableHead className="text-end">
                             {t('admin.personLimits.columns.maxAmount', { defaultValue: 'Max Amount' })}
@@ -737,13 +842,39 @@ export function CashAdvanceLedgerContent() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label>{t('ops.ledger.form.flowType', { defaultValue: 'Flow Type' })}</Label>
-                  <Input
-                    value={draft.flowType}
-                    onChange={(e) => setDraft({ ...draft, flowType: e.target.value })}
-                    placeholder={t('ops.ledger.form.flowTypePlaceholder', {
-                      defaultValue: 'e.g. Payment, Invoice, Settlement',
-                    })}
-                  />
+                  <Select
+                    value={draft.flowType || undefined}
+                    onValueChange={(v) => setDraft({ ...draft, flowType: v })}
+                    disabled={flowTypesFailed}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t('ops.ledger.form.flowTypeSelectPlaceholder', {
+                          defaultValue: 'Select a type',
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {flowTypeList.map((ft) => (
+                        <SelectItem key={ft.code} value={ft.code}>
+                          {flowTypeLabel(ft.code)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {flowTypesFailed ? (
+                    <p className="text-xs text-destructive">
+                      {t('ops.ledger.form.flowTypesUnavailable', {
+                        defaultValue: "Flow types could not be loaded, so an entry can't be recorded right now.",
+                      })}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('ops.ledger.form.flowTypeHint', {
+                        defaultValue: 'If the type you need is not in this list, write the actual type in Description.',
+                      })}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label>{t('ops.ledger.form.direction', { defaultValue: 'Direction' })}</Label>

@@ -812,6 +812,8 @@
         "fundRequired": "تنخواه الزامی است",
         "itemsRequired": "حداقل یک قلم انتخاب کنید",
         "amountRequired": "مبلغ فاکتور الزامی است",
+        "invoiceNumberRequired": "شماره فاکتور الزامی است",
+        "invoiceDateRequired": "تاریخ فاکتور الزامی است",
         "documentsRequired": "حداقل یک سند فاکتور پیوست کنید"
       },
       "toasts": {
@@ -820,8 +822,8 @@
       }
     },
     "invoiceView": {
-      "title": "فاکتورهای من",
-      "description": "فاکتورهایی که ثبت کرده‌اید — وضعیت تأیید مالی و مدیرعامل را پیگیری کنید.",
+      "title": "فاکتورها",
+      "description": "وضعیت تأیید مالی و مدیرعامل را پیگیری کنید.",
       "filters": {
         "fund": "تنخواه",
         "allFunds": "همه تنخواه‌ها",
@@ -845,11 +847,44 @@
         "status": "وضعیت",
         "actions": "عملیات"
       },
-      "empty": "هنوز فاکتوری ثبت نکرده‌اید.",
+      "empty": "هنوز فاکتوری ثبت نشده است",
       "stats": {
         "total": "کل",
         "pending": "در انتظار",
         "approved": "تأیید شده"
+      }
+    },
+    "coverSheet": {
+      "title": "روکش تنخواه",
+      "description": "فاکتورهای تأیید شده توسط مدیرعامل برای یک تنخواه در یک بازهٔ زمانی، از قدیمی‌ترین.",
+      "filters": {
+        "fund": "تنخواه",
+        "fromDate": "از تاریخ",
+        "toDate": "تا تاریخ"
+      },
+      "columns": {
+        "row": "ردیف",
+        "check": "✓",
+        "invoiceNumber": "شماره فاکتور",
+        "date": "تاریخ",
+        "fund": "تنخواه",
+        "project": "پروژه",
+        "description": "توضیحات",
+        "amount": "مبلغ"
+      },
+      "empty": "فاکتوری در این بازه وجود ندارد",
+      "emptyUnapproved": "در این بازه فاکتوری وجود دارد، اما هیچ‌کدام تایید مدیرعامل ندارد.",
+      "total": "جمع کل",
+      "print": "چاپ",
+      "allFunds": "همه تنخواه‌ها",
+      "signatures": {
+        "ceo": "مدیرعامل",
+        "worksiteSupervisor": "سرپرست کارگاه",
+        "fundInCharge": "مسئول تنخواه"
+      },
+      "undated": {
+        "title": "فاکتورهای بدون تاریخ",
+        "hint": "این فاکتورها تاریخ ندارند، بنابراین در هیچ بازه‌ای قرار نمی‌گیرند و در جمع کل محاسبه نشده‌اند."
       }
     },
     "ledger": {
@@ -862,11 +897,10 @@
         "transactionDate": "تاریخ",
         "fund": "تنخواه",
         "person": "شخص",
-        "flowType": "نوع جریان",
-        "direction": "جهت",
+        "flowType": "نوع تسویه",
+        "direction": "ماهیت",
         "amount": "مبلغ",
         "balanceAfter": "مانده پس از",
-        "sourceType": "منبع",
         "description": "توضیحات"
       },
       "filters": {
@@ -874,23 +908,34 @@
         "allFunds": "همه تنخواه‌ها",
         "person": "شخص",
         "allPersons": "همه اشخاص",
-        "direction": "جهت",
-        "allDirections": "همه جهت‌ها",
-        "flowType": "نوع جریان",
-        "allFlowTypes": "همه انواع جریان",
+        "direction": "ماهیت",
+        "allDirections": "همه ماهیت‌ها",
+        "flowType": "نوع تسویه",
+        "allFlowTypes": "همه انواع تسویه",
+        "fromDate": "از تاریخ",
+        "toDate": "تا تاریخ",
         "search": "جستجو"
       },
-      "directionIn": "ورودی",
-      "directionOut": "خروجی",
+      "directionIn": "بستانکاری",
+      "directionOut": "بدهکاری",
+      "balanceCreditor": "بستانکار",
+      "balanceDebtor": "بدهکار",
+      "balanceTitle": "مانده به تفکیک شخص",
+      "balanceCol": "مانده بر خط",
+      "noLimit": "بدون محدودیت",
+      "overLimit": "بیشتر از حد مجاز",
+      "withinLimit": "در محدوده مجاز",
       "form": {
         "fund": "تنخواه",
         "fundPlaceholder": "یک تنخواه انتخاب کنید",
         "person": "شخص",
         "personPlaceholder": "یک شخص انتخاب کنید",
-        "flowType": "نوع جریان",
-        "flowTypePlaceholder": "مثلاً پرداخت، فاکتور، تسویه",
-        "direction": "جهت",
-        "directionPlaceholder": "ورودی یا خروجی",
+        "flowType": "نوع تسویه",
+        "flowTypeSelectPlaceholder": "نوع را انتخاب کنید",
+        "flowTypeHint": "اگر نوع مورد نظرتان در این فهرست نیست، نوع واقعی را در «توضیحات» بنویسید.",
+        "flowTypesUnavailable": "فهرست نوع‌ها بارگذاری نشد؛ فعلاً ثبت مورد جدید ممکن نیست.",
+        "direction": "ماهیت",
+        "directionPlaceholder": "بستانکاری یا بدهکاری",
         "amount": "مبلغ",
         "amountPlaceholder": "مبلغ را وارد کنید",
         "balanceAfter": "مانده پس از",
@@ -908,7 +953,9 @@
         "flowTypeRequired": "نوع جریان الزامی است",
         "directionRequired": "جهت الزامی است",
         "amountRequired": "مبلغ الزامی است",
-        "dateRequired": "تاریخ تراکنش الزامی است"
+        "dateRequired": "تاریخ تراکنش الزامی است",
+        "invalidFlowType": "این نوع پذیرفته نیست. یکی از موارد فهرست را انتخاب کنید.",
+        "invalidDirection": "این ماهیت پذیرفته نیست. بستانکاری یا بدهکاری را انتخاب کنید."
       },
       "toasts": {
         "created": "رکورد دفتر ثبت شد"
@@ -979,6 +1026,9 @@
       "validation": {
         "codeRequired": "کد الزامی است",
         "nameRequired": "حداقل یک نام الزامی است"
+      },
+      "errors": {
+        "inUse": "این مورد در حال استفاده است و قابل حذف نیست."
       }
     },
     "statuses": {

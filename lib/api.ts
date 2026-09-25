@@ -29,8 +29,8 @@ export async function apiFetch(
 
   // Handle 401 Unauthorized - token expired, redirect to login
   if (response.status === 401 && typeof window !== 'undefined') {
-    const { signOut } = await import('next-auth/react');
-    signOut({ callbackUrl: '/signin', redirect: true });
+    const { signOutToTenant } = await import('./auth-signout');
+    signOutToTenant();
   }
 
   return response;

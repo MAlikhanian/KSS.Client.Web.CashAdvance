@@ -45,6 +45,13 @@ export async function registerAuth(
     countryId?: number;
   },
   captchaPayload: string,
+  /**
+   * Hostname the signup was served from. Derived from the real request Host by
+   * the BFF route — never a client-supplied header. Auth looks it up in its own
+   * TENANT_HOSTS config to decide which company the new user joins, so an
+   * unknown value simply yields no company rather than a wrong one.
+   */
+  tenantHost?: string,
 ): Promise<any> {
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}/Api/User/Register`;
@@ -58,6 +65,9 @@ export async function registerAuth(
         'Content-Type': 'application/json',
         Accept: 'application/json',
         'X-Captcha-Payload': captchaPayload,
+        // Omitted entirely when unknown, so Auth sees no header at all and
+        // creates no company membership.
+        ...(tenantHost ? { 'X-Tenant-Host': tenantHost } : {}),
       },
       body: JSON.stringify(data),
     });

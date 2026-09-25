@@ -239,6 +239,20 @@ export const MENU_SIDEBAR: MenuConfig = [
       { title: 'Instruments', path: '/spm/instruments' },
       { title: 'Audit Trail', path: '/spm/audit' },
       { title: 'Service Health', path: '/spm/health' },
+      // Investor portal — the END-USER side of the same platform (§6-1).
+      // Inside this group rather than standing alone, so the whole SPM domain
+      // reads as one section. Note the consequence: `navItemsForPathPrefix`
+      // returns this group's children, so these four also appear in the
+      // console's secondary navbar.
+      //
+      // TODO(auth): in production an investor never sees this sidebar — the
+      // portal is its own entry point after investor sign-in. Listed here so
+      // the work can be reviewed before §6-1 item 1 (registration and
+      // authentication) exists. Gate on SPM.Portal.* when permissions land.
+      { title: 'Portal Overview', path: '/spm/portal' },
+      { title: 'Portal Funds', path: '/spm/portal/instruments' },
+      { title: 'Portal New Request', path: '/spm/portal/new-request' },
+      { title: 'Portal My Requests', path: '/spm/portal/requests' },
     ],
   },
   {
