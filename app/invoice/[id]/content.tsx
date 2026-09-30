@@ -408,6 +408,16 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                         {formatDateTime(invoice.financialManagerApprovedAt)}
                       </span>
                     </div>
+                    {invoice.financialManagerStatusDescription && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-muted-foreground">
+                          {t('ops.common.statusReason', { defaultValue: 'Reason' })}
+                        </span>
+                        <span className="text-xs whitespace-pre-wrap">
+                          {invoice.financialManagerStatusDescription}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label>{t('ops.invoiceDetail.ceoStatus', { defaultValue: 'CEO Status' })}</Label>
@@ -423,6 +433,16 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                         {formatDateTime(invoice.approvedAt)}
                       </span>
                     </div>
+                    {invoice.ceoStatusDescription && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-muted-foreground">
+                          {t('ops.common.statusReason', { defaultValue: 'Reason' })}
+                        </span>
+                        <span className="text-xs whitespace-pre-wrap">
+                          {invoice.ceoStatusDescription}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
