@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Eye, Plus } from 'lucide-react';
 import { RiErrorWarningFill } from '@remixicon/react';
@@ -45,6 +46,7 @@ import {
   type PersonDirectoryRecord,
 } from '@/lib/cash-advance/api/client';
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
+import { withQuery } from '@/lib/cash-advance/safe-back';
 import { personDisplayName } from './components/person-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -83,7 +85,19 @@ export function CashAdvanceRequestsContent() {
   const [fundTranslations, setFundTranslations] = useState<CashAdvanceTranslationView[]>([]);
   const [persons, setPersons] = useState<PersonDirectoryRecord[]>([]);
 
-  const [fundFilter, setFundFilter] = useState<string>('ALL');
+  // The fund filter lives in the URL (?fund=), so returning to the list, or browser Back, restores it.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [fundFilter, setFundFilterState] = useState<string>(() => searchParams.get('fund') || 'ALL');
+  const setFundFilter = useCallback(
+    (value: string) => {
+      setFundFilterState(value);
+      router.replace(withQuery(pathname, { fund: value === 'ALL' ? null : value }), { scroll: false });
+    },
+    [router, pathname],
+  );
+  const listHref = withQuery('/requests', { fund: fundFilter === 'ALL' ? null : fundFilter });
 
   const loadAll = useCallback(async () => {
     try {
@@ -293,7 +307,7 @@ export function CashAdvanceRequestsContent() {
                           <TableCell>{r.requestedAt ? formatDate(r.requestedAt) : '—'}</TableCell>
                           <TableCell className="text-center">
                             <Button asChild variant="ghost" size="sm" mode="icon">
-                              <Link href={`/${r.id}`}>
+                              <Link href={withQuery(`/${r.id}`, { back: listHref })}>
                                 <Eye className="size-4" />
                               </Link>
                             </Button>

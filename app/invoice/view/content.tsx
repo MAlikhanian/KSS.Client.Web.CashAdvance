@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Eye, Pencil } from 'lucide-react';
 import { RiErrorWarningFill } from '@remixicon/react';
@@ -44,6 +45,7 @@ import {
   type CashAdvanceTranslationView,
 } from '@/lib/cash-advance/api/client';
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
+import { withQuery } from '@/lib/cash-advance/safe-back';
 import { FundPicker, fundDisplayName } from '@/components/common/fund-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -102,6 +104,27 @@ const stageOf = (i: InvoiceView) => {
   };
 };
 
+const STATUS_FILTERS = ['ALL', 'awaitingFm', 'awaitingCeo', 'approved', 'rejected', 'correctionRequested'];
+
+// Free-text search is kept per browser tab, never in the URL: it can hold personal text, and URLs
+// end up in logs, history and shared links.
+const SEARCH_STORAGE_KEY = 'cash-advance:invoice-list:search';
+const readStoredSearch = (): string => {
+  try {
+    return window.sessionStorage.getItem(SEARCH_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+const writeStoredSearch = (value: string) => {
+  try {
+    if (value) window.sessionStorage.setItem(SEARCH_STORAGE_KEY, value);
+    else window.sessionStorage.removeItem(SEARCH_STORAGE_KEY);
+  } catch {
+    /* storage unavailable: the search simply is not remembered */
+  }
+};
+
 export function InvoiceViewContent() {
   const { t } = useTranslation('cash-advance');
   const { language } = useLanguage();
@@ -113,9 +136,49 @@ export function InvoiceViewContent() {
   const [funds, setFunds] = useState<CashAdvanceView[]>([]);
   const [fundTranslations, setFundTranslations] = useState<CashAdvanceTranslationView[]>([]);
 
-  const [fundFilter, setFundFilter] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  // Fund and status live in the URL (?fund=, ?status=), so returning to the list, or browser Back,
+  // restores them. Search is restored from session storage (see SEARCH_STORAGE_KEY).
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [fundFilter, setFundFilterState] = useState<string | null>(() => searchParams.get('fund') || null);
+  const [statusFilter, setStatusFilterState] = useState<string>(() => {
+    const s = searchParams.get('status');
+    return s && STATUS_FILTERS.includes(s) ? s : 'ALL';
+  });
   const [search, setSearch] = useState('');
+  const searchRestored = useRef(false);
+
+  const writeUrl = useCallback(
+    (fund: string | null, status: string) => {
+      router.replace(withQuery(pathname, { fund, status: status === 'ALL' ? null : status }), {
+        scroll: false,
+      });
+    },
+    [router, pathname],
+  );
+  const setFundFilter = (value: string | null) => {
+    setFundFilterState(value);
+    writeUrl(value, statusFilter);
+  };
+  const setStatusFilter = (value: string) => {
+    setStatusFilterState(value);
+    writeUrl(fundFilter, value);
+  };
+  const listHref = withQuery('/invoice/view', {
+    fund: fundFilter,
+    status: statusFilter === 'ALL' ? null : statusFilter,
+  });
+
+  useEffect(() => {
+    setSearch(readStoredSearch());
+    searchRestored.current = true;
+  }, []);
+  useEffect(() => {
+    if (!searchRestored.current) return;
+    const timer = window.setTimeout(() => writeStoredSearch(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const loadAll = useCallback(async () => {
     try {
@@ -333,7 +396,7 @@ export function InvoiceViewContent() {
                                 </Button>
                               )}
                               <Button asChild variant="ghost" size="sm" mode="icon">
-                                <Link href={`/invoice/${i.id}`}>
+                                <Link href={withQuery(`/invoice/${i.id}`, { back: listHref })}>
                                   <Eye className="size-4" />
                                 </Link>
                               </Button>

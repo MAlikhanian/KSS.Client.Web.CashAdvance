@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Upload, Download } from 'lucide-react';
 import { RiCheckboxCircleFill, RiErrorWarningFill } from '@remixicon/react';
@@ -69,6 +69,7 @@ import {
   type PersonDirectoryRecord,
 } from '@/lib/cash-advance/api/client';
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
+import { safeBack } from '@/lib/cash-advance/safe-back';
 import { StatusSelect, statusName, statusIsRejected } from './components/status-select';
 import { usePermission } from '@/hooks/use-permission';
 
@@ -104,6 +105,8 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
   const { t } = useTranslation('cash-advance');
   const { language } = useLanguage();
   const router = useRouter();
+  // Return to the list with the filters it was opened from; only an in-app list path is accepted.
+  const backHref = safeBack(useSearchParams().get('back'), '/requests');
   const { hasPermission } = usePermission();
   const langId = language.code === 'en' ? 10 : 12;
 
@@ -795,7 +798,7 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
           <Card>
             <CardContent className="py-5">
               <div className="flex justify-end">
-                <Button variant="outline" onClick={() => router.push('/requests')}>
+                <Button variant="outline" onClick={() => router.push(backHref)}>
                   {t('ops.requestDetail.back', { defaultValue: 'Back to requests' })}
                 </Button>
               </div>

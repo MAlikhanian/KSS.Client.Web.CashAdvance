@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, Link2 } from 'lucide-react';
 import { RiCheckboxCircleFill, RiErrorWarningFill } from '@remixicon/react';
@@ -38,6 +39,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useLanguage } from '@/providers/i18n-provider';
 import { usePermission } from '@/hooks/use-permission';
 import { formatDate, formatDateTime, formatRial } from '@/lib/cash-advance/format';
+import { safeBack } from '@/lib/cash-advance/safe-back';
 import {
   listInvoices,
   listFunds,
@@ -107,6 +109,8 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
   const { language } = useLanguage();
   const { hasPermission } = usePermission();
   const langId = language.code === 'en' ? EN : FA;
+  // Return to the list with the filters it was opened from; only an in-app list path is accepted.
+  const backHref = safeBack(useSearchParams().get('back'), '/invoice/view');
 
   const [loading, setLoading] = useState(true);
   const [invoice, setInvoice] = useState<InvoiceView | null>(null);
@@ -243,7 +247,7 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
             {t('ops.invoiceDetail.notFound', { defaultValue: 'Invoice not found.' })}
             <div className="mt-4">
               <Button asChild variant="outline" size="sm">
-                <Link href="/invoice/view">
+                <Link href={backHref}>
                   <ArrowLeft className="size-4" />
                   {t('ops.invoiceDetail.back', { defaultValue: 'Back to invoices' })}
                 </Link>
@@ -335,7 +339,7 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
             </ToolbarHeading>
             <ToolbarActions>
               <Button asChild variant="outline" size="sm">
-                <Link href="/invoice/view">
+                <Link href={backHref}>
                   <ArrowLeft className="size-4" />
                   {t('ops.invoiceDetail.back', { defaultValue: 'Back to invoices' })}
                 </Link>
