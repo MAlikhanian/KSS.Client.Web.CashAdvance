@@ -58,6 +58,7 @@ import {
 } from '@/lib/cash-advance/api/client';
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
 import { withQuery } from '@/lib/cash-advance/safe-back';
+import { approvalCommentAt } from '@/lib/cash-advance/approval-comment';
 import { FundPicker, fundDisplayName } from '@/components/common/fund-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -266,6 +267,8 @@ export function InvoiceViewContent() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [bulkMode, setBulkMode] = useState<'approve' | 'reject' | null>(null);
   const [bulkReason, setBulkReason] = useState('');
+  // The approve dialog's optional comment, kept apart from the reject reason.
+  const [bulkComment, setBulkComment] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<InvoiceBatchDecisionResult[] | null>(null);
   // A whole-call error (the request was refused as a whole): its code and how many were not sent.
@@ -361,6 +364,7 @@ export function InvoiceViewContent() {
     if (!decideStage || !bulkMode || selectedRows.length === 0) return;
     const reason = bulkReason.trim();
     if (bulkMode === 'reject' && !reason) return;
+    const comment = bulkComment.trim();
     setBulkBusy(true);
     const ids = selectedRows.map((i) => i.id);
     const results: InvoiceBatchDecisionResult[] = [];
@@ -374,7 +378,13 @@ export function InvoiceViewContent() {
           stage: decideStage,
           invoiceIds: chunk,
           statusId: bulkMode === 'approve' ? 2 : 3,
-          ...(bulkMode === 'reject' ? { statusDescription: reason } : {}),
+          // Reject: the required reason. Approve: the optional comment (one text for every invoice),
+          // only where the stage takes one and only when not empty.
+          ...(bulkMode === 'reject'
+            ? { statusDescription: reason }
+            : comment && approvalCommentAt(decideStage)
+              ? { statusDescription: comment }
+              : {}),
         });
         const byId = new Map((res ?? []).map((r) => [r.invoiceId, r]));
         for (const id of chunk) results.push(byId.get(id) ?? { invoiceId: id, ok: false });
@@ -387,6 +397,7 @@ export function InvoiceViewContent() {
     setBulkBusy(false);
     setBulkMode(null);
     setBulkReason('');
+    setBulkComment('');
     setBulkCallError(callError);
     setBulkResult(results);
     setSelected(new Set());
@@ -528,7 +539,10 @@ export function InvoiceViewContent() {
                     <Button
                       size="sm"
                       disabled={selectedRows.length === 0 || bulkBusy}
-                      onClick={() => setBulkMode('approve')}
+                      onClick={() => {
+                        setBulkComment('');
+                        setBulkMode('approve');
+                      }}
                     >
                       {t('ops.invoiceView.bulk.approve', {
                         count: selectedRows.length,
@@ -693,6 +707,16 @@ export function InvoiceViewContent() {
                   {t('ops.invoiceView.bulk.reasonRequired', { defaultValue: 'A reason is required to reject' })}
                 </p>
               )}
+            </div>
+          )}
+          {bulkMode === 'approve' && decideStage && approvalCommentAt(decideStage) && (
+            <div className="space-y-1">
+              <Label>
+                {t('ops.invoiceView.bulk.commentLabel', {
+                  defaultValue: 'Comment (optional, applies to all selected invoices)',
+                })}
+              </Label>
+              <Textarea rows={3} value={bulkComment} onChange={(e) => setBulkComment(e.target.value)} />
             </div>
           )}
           <DialogFooter>

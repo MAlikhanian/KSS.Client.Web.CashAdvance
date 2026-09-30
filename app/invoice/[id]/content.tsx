@@ -40,6 +40,7 @@ import { useLanguage } from '@/providers/i18n-provider';
 import { usePermission } from '@/hooks/use-permission';
 import { formatDate, formatDateTime, formatRial } from '@/lib/cash-advance/format';
 import { safeBack } from '@/lib/cash-advance/safe-back';
+import { STATUS_APPROVED, approvalCommentAt } from '@/lib/cash-advance/approval-comment';
 import {
   listInvoices,
   listFunds,
@@ -265,6 +266,26 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
   const activeStatuses = statuses.filter((s) => s.isActive);
   const ceoEnabled = invoice.financialManagerStatusId === 2; // CEO acts only after FM approves
 
+  type Draft = { statusId: number; reason: string };
+  // Approving at a stage listed in APPROVAL_COMMENT_STAGES takes an optional comment.
+  const approveComment = (stage: 'fm' | 'ceo', statusId: number) =>
+    statusId === STATUS_APPROVED && approvalCommentAt(stage);
+  // Rejected: the required reason. Approved with a comment enabled: the comment, or null when empty.
+  // Anything else: null.
+  const decisionDescription = (stage: 'fm' | 'ceo', d: Draft) =>
+    isRejectedStatus(d.statusId)
+      ? d.reason.trim()
+      : approveComment(stage, d.statusId)
+        ? d.reason.trim() || null
+        : null;
+  // Changing the status keeps the draft text, except when the comment is enabled for the stage and
+  // the change crosses between rejected and not rejected: a reason must not become an approval
+  // comment unseen, or the reverse.
+  const withStatus = (stage: 'fm' | 'ceo', d: Draft, statusId: number): Draft =>
+    approvalCommentAt(stage) && isRejectedStatus(statusId) !== isRejectedStatus(d.statusId)
+      ? { statusId, reason: '' }
+      : { ...d, statusId };
+
   const saveFm = async () => {
     if (invoice.correctionRequested) return;
     if (isRejectedStatus(fmDraft.statusId) && !fmDraft.reason.trim())
@@ -272,7 +293,7 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
     await invoiceFinancialManagerDecide({
       invoiceId: invoice.id,
       statusId: fmDraft.statusId,
-      statusDescription: isRejectedStatus(fmDraft.statusId) ? fmDraft.reason.trim() : null,
+      statusDescription: decisionDescription('fm', fmDraft),
     });
     showSuccess(t('ops.invoiceDetail.toasts.fmSaved', { defaultValue: 'Finance decision saved' }));
     await refresh();
@@ -284,7 +305,7 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
     await invoiceCeoDecide({
       invoiceId: invoice.id,
       statusId: ceoDraft.statusId,
-      statusDescription: isRejectedStatus(ceoDraft.statusId) ? ceoDraft.reason.trim() : null,
+      statusDescription: decisionDescription('ceo', ceoDraft),
     });
     showSuccess(t('ops.invoiceDetail.toasts.ceoSaved', { defaultValue: 'CEO decision saved' }));
     await refresh();
@@ -415,7 +436,9 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                     {invoice.financialManagerStatusDescription && (
                       <div className="flex flex-col gap-1">
                         <span className="text-muted-foreground">
-                          {t('ops.common.statusReason', { defaultValue: 'Reason' })}
+                          {invoice.financialManagerStatusId === STATUS_APPROVED
+                            ? t('ops.common.statusComment', { defaultValue: 'Comment' })
+                            : t('ops.common.statusReason', { defaultValue: 'Reason' })}
                         </span>
                         <span className="text-xs whitespace-pre-wrap">
                           {invoice.financialManagerStatusDescription}
@@ -440,7 +463,9 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                     {invoice.ceoStatusDescription && (
                       <div className="flex flex-col gap-1">
                         <span className="text-muted-foreground">
-                          {t('ops.common.statusReason', { defaultValue: 'Reason' })}
+                          {invoice.ceoStatusId === STATUS_APPROVED
+                            ? t('ops.common.statusComment', { defaultValue: 'Comment' })
+                            : t('ops.common.statusReason', { defaultValue: 'Reason' })}
                         </span>
                         <span className="text-xs whitespace-pre-wrap">
                           {invoice.ceoStatusDescription}
@@ -608,7 +633,7 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                     <div className="space-y-2">
                       <Select
                         value={String(fmDraft.statusId)}
-                        onValueChange={(v) => setFmDraft({ ...fmDraft, statusId: Number(v) })}
+                        onValueChange={(v) => setFmDraft(withStatus('fm', fmDraft, Number(v)))}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue
@@ -623,14 +648,18 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                           ))}
                         </SelectContent>
                       </Select>
-                      {isRejectedStatus(fmDraft.statusId) && (
+                      {(isRejectedStatus(fmDraft.statusId) || approveComment('fm', fmDraft.statusId)) && (
                         <Textarea
                           rows={2}
                           value={fmDraft.reason}
                           onChange={(e) => setFmDraft({ ...fmDraft, reason: e.target.value })}
-                          placeholder={t('ops.invoiceDetail.reasonPlaceholder', {
-                            defaultValue: 'Explain the rejection (required when rejected)…',
-                          })}
+                          placeholder={
+                            isRejectedStatus(fmDraft.statusId)
+                              ? t('ops.invoiceDetail.reasonPlaceholder', {
+                                  defaultValue: 'Explain the rejection (required when rejected)…',
+                                })
+                              : t('ops.invoiceDetail.commentPlaceholder', { defaultValue: 'Optional comment…' })
+                          }
                         />
                       )}
                     </div>
@@ -683,7 +712,7 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                     <div className="space-y-2">
                       <Select
                         value={String(ceoDraft.statusId)}
-                        onValueChange={(v) => setCeoDraft({ ...ceoDraft, statusId: Number(v) })}
+                        onValueChange={(v) => setCeoDraft(withStatus('ceo', ceoDraft, Number(v)))}
                         disabled={!ceoEnabled}
                       >
                         <SelectTrigger className="w-full">
@@ -699,15 +728,19 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                           ))}
                         </SelectContent>
                       </Select>
-                      {isRejectedStatus(ceoDraft.statusId) && (
+                      {(isRejectedStatus(ceoDraft.statusId) || approveComment('ceo', ceoDraft.statusId)) && (
                         <Textarea
                           rows={2}
                           value={ceoDraft.reason}
                           onChange={(e) => setCeoDraft({ ...ceoDraft, reason: e.target.value })}
                           disabled={!ceoEnabled}
-                          placeholder={t('ops.invoiceDetail.reasonPlaceholder', {
-                            defaultValue: 'Explain the rejection (required when rejected)…',
-                          })}
+                          placeholder={
+                            isRejectedStatus(ceoDraft.statusId)
+                              ? t('ops.invoiceDetail.reasonPlaceholder', {
+                                  defaultValue: 'Explain the rejection (required when rejected)…',
+                                })
+                              : t('ops.invoiceDetail.commentPlaceholder', { defaultValue: 'Optional comment…' })
+                          }
                         />
                       )}
                     </div>
