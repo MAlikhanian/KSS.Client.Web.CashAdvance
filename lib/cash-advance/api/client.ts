@@ -392,6 +392,16 @@ export const invoiceFinancialManagerDecide = (body: InvoiceDecisionBody) =>
   http<void>('POST', '/workflow/invoice-fm-decide', body);
 export const invoiceCeoDecide = (body: InvoiceDecisionBody) =>
   http<void>('POST', '/workflow/invoice-ceo-decide', body);
+// Batch decision for one stage (see services/cash-advance-api.ts for the contract).
+export interface InvoiceBatchDecisionBody {
+  stage: 'fm' | 'ceo';
+  invoiceIds: string[];
+  statusId: 2 | 3;
+  statusDescription?: string;
+}
+export interface InvoiceBatchDecisionResult { invoiceId: string; ok: boolean; errorCode?: string | null; }
+export const invoiceDecideBatch = (body: InvoiceBatchDecisionBody) =>
+  http<InvoiceBatchDecisionResult[]>('POST', '/workflow/invoice-decide-batch', body);
 
 // ── Invoice correction / rework loop ──
 export interface InvoiceCorrectionRequestBody { invoiceId: string; note: string; }

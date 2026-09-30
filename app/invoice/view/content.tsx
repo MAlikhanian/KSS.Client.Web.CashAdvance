@@ -26,6 +26,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertIcon, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -40,7 +50,9 @@ import {
   listInvoices,
   listMyFunds,
   listFundTranslations,
+  invoiceDecideBatch,
   type InvoiceView,
+  type InvoiceBatchDecisionResult,
   type CashAdvanceView,
   type CashAdvanceTranslationView,
 } from '@/lib/cash-advance/api/client';
@@ -123,6 +135,16 @@ const writeStoredSearch = (value: string) => {
   } catch {
     /* storage unavailable: the search simply is not remembered */
   }
+};
+
+// Bulk decisions: a row is selectable only when the caller can decide it at the chosen stage.
+type DecideStage = 'fm' | 'ceo';
+const BATCH_MAX = 100;
+const eligibleAt = (i: InvoiceView, stage: DecideStage) => {
+  if (i.correctionRequested) return false;
+  return stage === 'fm'
+    ? i.financialManagerStatusId === 1
+    : i.financialManagerStatusId === 2 && i.ceoStatusId === 1;
 };
 
 export function InvoiceViewContent() {
@@ -232,6 +254,146 @@ export function InvoiceViewContent() {
     [mine],
   );
   const approvedCount = useMemo(() => mine.filter((i) => i.ceoStatusId === 2).length, [mine]);
+
+  // ── Bulk approve / reject ──
+  // A caller holding both approval permissions picks the stage explicitly; changing it clears the
+  // selection, so a row can only ever be sent to the stage it is eligible for.
+  const canFm = hasPermission(['CashAdvance.Approval.FinancialManager']);
+  const canCeo = hasPermission(['CashAdvance.Approval.Ceo']);
+  const [chosenStage, setChosenStage] = useState<DecideStage>('fm');
+  const decideStage: DecideStage | null =
+    canFm && canCeo ? chosenStage : canFm ? 'fm' : canCeo ? 'ceo' : null;
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [bulkMode, setBulkMode] = useState<'approve' | 'reject' | null>(null);
+  const [bulkReason, setBulkReason] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<InvoiceBatchDecisionResult[] | null>(null);
+  // A whole-call error (the request was refused as a whole): its code and how many were not sent.
+  const [bulkCallError, setBulkCallError] = useState<{ code: string; count: number } | null>(null);
+
+  const eligibleVisible = useMemo(
+    () => (decideStage ? filtered.filter((i) => eligibleAt(i, decideStage)) : []),
+    [filtered, decideStage],
+  );
+  // Only rows that are visible and eligible now are ever sent.
+  const selectedRows = useMemo(
+    () => eligibleVisible.filter((i) => selected.has(i.id)),
+    [eligibleVisible, selected],
+  );
+  const selectedTotal = useMemo(
+    () => selectedRows.reduce((sum, i) => sum + (i.invoiceAmount ?? 0), 0),
+    [selectedRows],
+  );
+  const allVisibleSelected =
+    eligibleVisible.length > 0 && selectedRows.length === eligibleVisible.length;
+
+  const changeStage = (stage: DecideStage) => {
+    setChosenStage(stage);
+    setSelected(new Set());
+  };
+  const toggleRow = (id: string, on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const toggleAllVisible = (on: boolean) =>
+    setSelected(on ? new Set(eligibleVisible.map((i) => i.id)) : new Set());
+
+  const stageLabel = (stage: DecideStage) =>
+    stage === 'fm'
+      ? t('ops.invoiceView.bulk.stageFm', { defaultValue: 'Finance' })
+      : t('ops.invoiceView.bulk.stageCeo', { defaultValue: 'CEO' });
+
+  // Codes the batch endpoint returns, per invoice and for the whole call. Unknown codes fall back
+  // to a generic message that shows the code.
+  const bulkErrorText = (code?: string | null) => {
+    switch (code) {
+      case 'REJECTION_REASON_REQUIRED':
+        return t('ops.invoiceView.bulk.reasonRequired', { defaultValue: 'A reason is required to reject' });
+      case 'BATCH_TOO_LARGE':
+        return t('ops.invoiceView.bulk.errorTooLarge', {
+          max: BATCH_MAX,
+          defaultValue: 'At most {{max}} invoices can be decided at once',
+        });
+      case 'FORBIDDEN':
+        return t('ops.invoiceView.bulk.errorForbidden', {
+          defaultValue: 'You do not have permission for this stage',
+        });
+      case 'RECORD_NOT_FOUND':
+        return t('ops.invoiceView.bulk.errNotFound', { defaultValue: 'Invoice not found' });
+      case 'CORRECTION_PENDING_RESUBMIT':
+        return t('ops.invoiceView.bulk.errCorrectionPending', {
+          defaultValue: 'A correction is pending on this invoice',
+        });
+      case 'FINANCIAL_MANAGER_APPROVAL_REQUIRED':
+        return t('ops.invoiceView.bulk.errFmApprovalRequired', {
+          defaultValue: 'Finance approval is required first',
+        });
+      case 'INVOICE_NOT_LINKED_TO_REQUEST':
+        return t('ops.invoiceView.bulk.errNotLinked', {
+          defaultValue: 'This invoice is not linked to a recharge request, so it cannot be approved',
+        });
+      case 'INVALID_STATUS':
+        return t('ops.invoiceView.bulk.errInvalidStatus', {
+          defaultValue: 'The status is not valid for this decision',
+        });
+      case 'CONCURRENCY_ERROR':
+        return t('ops.invoiceView.bulk.errConcurrency', {
+          defaultValue: 'The invoice was changed at the same time; refresh and try again',
+        });
+      case 'UNEXPECTED_ERROR':
+        return t('ops.invoiceView.bulk.errUnexpected', { defaultValue: 'An unexpected error occurred' });
+      case 'INVOICE_IDS_REQUIRED':
+        return t('ops.invoiceView.bulk.errIdsRequired', { defaultValue: 'No invoices were selected' });
+      case 'INVALID_STAGE':
+        return t('ops.invoiceView.bulk.errInvalidStage', { defaultValue: 'The decision stage is not valid' });
+      default:
+        return t('ops.invoiceView.bulk.errorGeneric', {
+          code: code || '—',
+          defaultValue: 'Could not be processed ({{code}})',
+        });
+    }
+  };
+
+  const runBulk = async () => {
+    if (!decideStage || !bulkMode || selectedRows.length === 0) return;
+    const reason = bulkReason.trim();
+    if (bulkMode === 'reject' && !reason) return;
+    setBulkBusy(true);
+    const ids = selectedRows.map((i) => i.id);
+    const results: InvoiceBatchDecisionResult[] = [];
+    let callError: { code: string; count: number } | null = null;
+    // Sent in chunks of at most BATCH_MAX. A whole-call error stops the run; the invoices not yet
+    // sent are reported once, as not processed, with that error.
+    for (let at = 0; at < ids.length; at += BATCH_MAX) {
+      const chunk = ids.slice(at, at + BATCH_MAX);
+      try {
+        const res = await invoiceDecideBatch({
+          stage: decideStage,
+          invoiceIds: chunk,
+          statusId: bulkMode === 'approve' ? 2 : 3,
+          ...(bulkMode === 'reject' ? { statusDescription: reason } : {}),
+        });
+        const byId = new Map((res ?? []).map((r) => [r.invoiceId, r]));
+        for (const id of chunk) results.push(byId.get(id) ?? { invoiceId: id, ok: false });
+      } catch (e) {
+        const msg = (e as Error)?.message ?? '';
+        callError = { code: /\b403\b/.test(msg) ? 'FORBIDDEN' : msg, count: ids.length - at };
+        break;
+      }
+    }
+    setBulkBusy(false);
+    setBulkMode(null);
+    setBulkReason('');
+    setBulkCallError(callError);
+    setBulkResult(results);
+    setSelected(new Set());
+    await loadAll();
+  };
+  const invoiceNumberOf = (id: string) =>
+    invoices.find((i) => i.id === id)?.invoiceNumber ?? id;
 
   if (!canRead) {
     return (
@@ -345,9 +507,69 @@ export function InvoiceViewContent() {
                   </div>
                 </div>
 
+                {decideStage && (
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
+                    {canFm && canCeo && (
+                      <div className="flex items-center gap-2 me-2">
+                        <Label className="text-xs text-muted-foreground">
+                          {t('ops.invoiceView.bulk.stage', { defaultValue: 'Decide as' })}
+                        </Label>
+                        <Select value={decideStage} onValueChange={(v) => changeStage(v as DecideStage)}>
+                          <SelectTrigger className="w-40">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fm">{stageLabel('fm')}</SelectItem>
+                            <SelectItem value="ceo">{stageLabel('ceo')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      disabled={selectedRows.length === 0 || bulkBusy}
+                      onClick={() => setBulkMode('approve')}
+                    >
+                      {t('ops.invoiceView.bulk.approve', {
+                        count: selectedRows.length,
+                        defaultValue: 'Approve selected ({{count}})',
+                      })}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={selectedRows.length === 0 || bulkBusy}
+                      onClick={() => setBulkMode('reject')}
+                    >
+                      {t('ops.invoiceView.bulk.reject', {
+                        count: selectedRows.length,
+                        defaultValue: 'Reject selected ({{count}})',
+                      })}
+                    </Button>
+                  </div>
+                )}
+
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {decideStage && (
+                        <TableHead className="w-10">
+                          <Checkbox
+                            aria-label={t('ops.invoiceView.bulk.selectAll', {
+                              defaultValue: 'Select all eligible invoices',
+                            })}
+                            disabled={eligibleVisible.length === 0}
+                            checked={
+                              allVisibleSelected
+                                ? true
+                                : selectedRows.length > 0
+                                  ? 'indeterminate'
+                                  : false
+                            }
+                            onCheckedChange={(v) => toggleAllVisible(v === true)}
+                          />
+                        </TableHead>
+                      )}
                       <TableHead>
                         {t('ops.invoiceView.columns.invoiceNumber', { defaultValue: 'Invoice #' })}
                       </TableHead>
@@ -373,6 +595,19 @@ export function InvoiceViewContent() {
                       const stage = stageOf(i);
                       return (
                         <TableRow key={i.id}>
+                          {decideStage && (
+                            <TableCell>
+                              {eligibleAt(i, decideStage) && (
+                                <Checkbox
+                                  aria-label={t('ops.invoiceView.bulk.selectRow', {
+                                    defaultValue: 'Select invoice',
+                                  })}
+                                  checked={selected.has(i.id)}
+                                  onCheckedChange={(v) => toggleRow(i.id, v === true)}
+                                />
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell className="font-medium">{i.invoiceNumber ?? '—'}</TableCell>
                           <TableCell>
                             {fundDisplayName(i.cashAdvanceId, fundTranslations, funds, langId)}
@@ -407,7 +642,7 @@ export function InvoiceViewContent() {
                     })}
                     {filtered.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={decideStage ? 7 : 6} className="text-center py-8 text-muted-foreground">
                           {t('ops.invoiceView.empty', { defaultValue: 'No invoices yet' })}
                         </TableCell>
                       </TableRow>
@@ -426,6 +661,115 @@ export function InvoiceViewContent() {
           </div>
         </div>
       </div>
+
+      {/* Bulk confirmation */}
+      <Dialog open={bulkMode !== null} onOpenChange={(o) => !o && !bulkBusy && setBulkMode(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkMode === 'reject'
+                ? t('ops.invoiceView.bulk.confirmRejectTitle', { defaultValue: 'Reject selected invoices' })
+                : t('ops.invoiceView.bulk.confirmApproveTitle', { defaultValue: 'Approve selected invoices' })}
+            </DialogTitle>
+            <DialogDescription>
+              {t('ops.invoiceView.bulk.confirmSummary', {
+                count: selectedRows.length,
+                amount: formatRial(selectedTotal),
+                stage: decideStage ? stageLabel(decideStage) : '',
+                defaultValue: '{{count}} invoices, total amount {{amount}}, stage: {{stage}}',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          {bulkMode === 'reject' && (
+            <div className="space-y-1">
+              <Label>
+                {t('ops.invoiceView.bulk.reasonLabel', {
+                  defaultValue: 'Reason (applies to all selected invoices)',
+                })}
+              </Label>
+              <Textarea rows={3} value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} />
+              {!bulkReason.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  {t('ops.invoiceView.bulk.reasonRequired', { defaultValue: 'A reason is required to reject' })}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" disabled={bulkBusy} onClick={() => setBulkMode(null)}>
+              {t('ops.common.cancel', { defaultValue: 'Cancel' })}
+            </Button>
+            <Button
+              variant={bulkMode === 'reject' ? 'destructive' : 'primary'}
+              disabled={bulkBusy || (bulkMode === 'reject' && !bulkReason.trim())}
+              onClick={runBulk}
+            >
+              {bulkBusy
+                ? t('ops.common.processing', { defaultValue: 'Processing...' })
+                : t('ops.common.confirm', { defaultValue: 'Confirm' })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk result */}
+      <Dialog
+        open={bulkResult !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setBulkResult(null);
+            setBulkCallError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('ops.invoiceView.bulk.resultTitle', { defaultValue: 'Result' })}</DialogTitle>
+            <DialogDescription>
+              {t('ops.invoiceView.bulk.resultSummary', {
+                ok: bulkResult?.filter((r) => r.ok).length ?? 0,
+                failed: (bulkResult?.filter((r) => !r.ok).length ?? 0) + (bulkCallError?.count ?? 0),
+                defaultValue: '{{ok}} succeeded, {{failed}} failed',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          {bulkCallError && (
+            <p className="text-sm text-destructive">
+              {t('ops.invoiceView.bulk.callError', {
+                message: bulkErrorText(bulkCallError.code),
+                count: bulkCallError.count,
+                defaultValue: '{{message}} Nothing was processed for {{count}} invoices.',
+              })}
+            </p>
+          )}
+          {bulkResult && bulkResult.some((r) => !r.ok) && (
+            <div className="space-y-1">
+              <Label>{t('ops.invoiceView.bulk.failedList', { defaultValue: 'Not processed' })}</Label>
+              <ul className="text-sm space-y-1 max-h-64 overflow-y-auto">
+                {bulkResult
+                  .filter((r) => !r.ok)
+                  .map((r) => (
+                    <li key={r.invoiceId}>
+                      <span className="font-medium">{invoiceNumberOf(r.invoiceId)}</span>
+                      {' — '}
+                      {bulkErrorText(r.errorCode)}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setBulkResult(null);
+                setBulkCallError(null);
+              }}
+            >
+              {t('ops.common.close', { defaultValue: 'Close' })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

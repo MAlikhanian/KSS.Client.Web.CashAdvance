@@ -795,6 +795,24 @@ export const invoiceFinancialManagerDecide = (token: string, body: InvoiceDecisi
 export const invoiceCeoDecide = (token: string, body: InvoiceDecisionBody) =>
   req<unknown>(token, 'POST', `/Api/CashAdvanceWorkflow/InvoiceCeoDecide`, body);
 
+// Batch decision for one stage. statusId: 2 = approve, 3 = reject (a reason is required).
+// Whole-request errors: REJECTION_REASON_REQUIRED, BATCH_TOO_LARGE (over 100), 403 for the stage.
+// Otherwise one result per invoice; a failed one carries its errorCode.
+export interface InvoiceBatchDecisionBody {
+  stage: 'fm' | 'ceo';
+  invoiceIds: string[];
+  statusId: 2 | 3;
+  statusDescription?: string;
+}
+export interface InvoiceBatchDecisionResult {
+  invoiceId: string;
+  ok: boolean;
+  errorCode?: string | null;
+}
+
+export const invoiceDecideBatch = (token: string, body: InvoiceBatchDecisionBody) =>
+  req<InvoiceBatchDecisionResult[]>(token, 'POST', `/Api/CashAdvanceWorkflow/InvoiceDecideBatch`, body);
+
 // ── Invoice correction / rework loop ──
 export interface InvoiceCorrectionRequestBody {
   invoiceId: string;
