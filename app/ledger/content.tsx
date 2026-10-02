@@ -60,7 +60,14 @@ import {
   type PersonDirectoryRecord,
   type CashAdvancePersonView,
 } from '@/lib/cash-advance/api/client';
-import { flowTypeDisplay, INVALID_DIRECTION, INVALID_FLOW_TYPE } from './flow-types';
+import {
+  chooseFlowType,
+  directionLockedFor,
+  flowTypeDisplay,
+  FLOW_TYPE_DIRECTION_MISMATCH,
+  INVALID_DIRECTION,
+  INVALID_FLOW_TYPE,
+} from './flow-types';
 import { PersonPicker, personDisplayName } from './components/person-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -499,6 +506,12 @@ export function CashAdvanceLedgerContent() {
             defaultValue: 'This nature is not accepted. Choose credit or debit.',
           }),
         );
+      } else if (message === FLOW_TYPE_DIRECTION_MISMATCH) {
+        showError(
+          t('ops.ledger.validation.flowTypeDirectionMismatch', {
+            defaultValue: 'This settlement type cannot be recorded with this nature.',
+          }),
+        );
       } else {
         showError(message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }));
       }
@@ -895,7 +908,9 @@ export function CashAdvanceLedgerContent() {
                   <Label>{t('ops.ledger.form.flowType', { defaultValue: 'Flow Type' })}</Label>
                   <Select
                     value={draft.flowType || undefined}
-                    onValueChange={(v) => setDraft({ ...draft, flowType: v })}
+                    onValueChange={(v) =>
+                      setDraft({ ...draft, ...chooseFlowType(flowTypeList, v, draft.direction) })
+                    }
                     disabled={flowTypesFailed}
                   >
                     <SelectTrigger>
@@ -932,6 +947,7 @@ export function CashAdvanceLedgerContent() {
                   <Select
                     value={draft.direction}
                     onValueChange={(v) => setDraft({ ...draft, direction: v })}
+                    disabled={directionLockedFor(flowTypeList, draft.flowType)}
                   >
                     <SelectTrigger>
                       <SelectValue
@@ -949,6 +965,13 @@ export function CashAdvanceLedgerContent() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
+                  {directionLockedFor(flowTypeList, draft.flowType) && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('ops.ledger.form.directionFollowsType', {
+                        defaultValue: 'Set by the settlement type.',
+                      })}
+                    </p>
+                  )}
                 </div>
               </div>
 

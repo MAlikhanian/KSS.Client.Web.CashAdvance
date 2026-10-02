@@ -45,3 +45,49 @@ export function flowTypeDisplay(
  */
 export const INVALID_FLOW_TYPE = 'INVALID_FLOW_TYPE';
 export const INVALID_DIRECTION = 'INVALID_DIRECTION';
+/** The chosen direction is not the one the chosen flow type requires. */
+export const FLOW_TYPE_DIRECTION_MISMATCH = 'FLOW_TYPE_DIRECTION_MISMATCH';
+
+/**
+ * Whether choosing a flow type that requires a direction also LOCKS the form's direction field.
+ * true: the direction is set from the type and cannot be changed. false: it is only pre-filled.
+ * Either way the server refuses a mismatched pairing.
+ */
+export const FLOW_TYPE_DIRECTION_LOCKED = true;
+
+export type FlowDirection = 'In' | 'Out';
+
+/**
+ * The direction the served list requires for `code`, or null when the type allows either.
+ * A list served without the field (an older backend) gives null for every type, so the form
+ * behaves exactly as it did before the field existed.
+ */
+export function flowTypeDirection(
+  list: readonly FlowTypeView[],
+  code: string | null | undefined,
+): FlowDirection | null {
+  if (!code) return null;
+  const d = (list.find((x) => x.code === code)?.direction ?? '').trim().toLowerCase();
+  return d === 'in' ? 'In' : d === 'out' ? 'Out' : null;
+}
+
+/**
+ * Form fields after choosing flow type `code`. A type that requires a direction sets it; a type
+ * that allows either leaves the direction the user already had (it is not reset).
+ */
+export function chooseFlowType(
+  list: readonly FlowTypeView[],
+  code: string,
+  currentDirection: string,
+): { flowType: string; direction: string } {
+  return { flowType: code, direction: flowTypeDirection(list, code) ?? currentDirection };
+}
+
+/** Whether the direction field is locked for the chosen flow type. */
+export function directionLockedFor(
+  list: readonly FlowTypeView[],
+  code: string | null | undefined,
+  locked: boolean = FLOW_TYPE_DIRECTION_LOCKED,
+): boolean {
+  return locked && flowTypeDirection(list, code) !== null;
+}

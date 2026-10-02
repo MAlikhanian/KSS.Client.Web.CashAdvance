@@ -969,6 +969,7 @@
         "flowTypesUnavailable": "فهرست نوع‌ها بارگذاری نشد؛ فعلاً ثبت مورد جدید ممکن نیست.",
         "direction": "ماهیت",
         "directionPlaceholder": "بستانکاری یا بدهکاری",
+        "directionFollowsType": "ماهیت بر اساس نوع تسویه تعیین می‌شود.",
         "amount": "مبلغ",
         "amountPlaceholder": "مبلغ را وارد کنید",
         "balanceAfter": "مانده پس از",
@@ -988,7 +989,8 @@
         "amountRequired": "مبلغ الزامی است",
         "dateRequired": "تاریخ تراکنش الزامی است",
         "invalidFlowType": "این نوع پذیرفته نیست. یکی از موارد فهرست را انتخاب کنید.",
-        "invalidDirection": "این ماهیت پذیرفته نیست. بستانکاری یا بدهکاری را انتخاب کنید."
+        "invalidDirection": "این ماهیت پذیرفته نیست. بستانکاری یا بدهکاری را انتخاب کنید.",
+        "flowTypeDirectionMismatch": "این نوع تسویه با این ماهیت پذیرفته نیست."
       },
       "toasts": {
         "created": "رکورد دفتر ثبت شد"

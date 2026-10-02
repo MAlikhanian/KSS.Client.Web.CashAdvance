@@ -969,6 +969,7 @@
         "flowTypesUnavailable": "Flow types could not be loaded, so an entry can't be recorded right now.",
         "direction": "Nature",
         "directionPlaceholder": "Credit or debit entry",
+        "directionFollowsType": "Set by the settlement type.",
         "amount": "Amount",
         "amountPlaceholder": "Enter amount",
         "balanceAfter": "Balance After",
@@ -988,7 +989,8 @@
         "amountRequired": "Amount is required",
         "dateRequired": "Transaction date is required",
         "invalidFlowType": "This flow type is not accepted. Choose one from the list.",
-        "invalidDirection": "This nature is not accepted. Choose credit or debit."
+        "invalidDirection": "This nature is not accepted. Choose credit or debit.",
+        "flowTypeDirectionMismatch": "This settlement type cannot be recorded with this nature."
       },
       "toasts": {
         "created": "Ledger entry recorded"

@@ -736,6 +736,8 @@ export interface FlowTypeView {
   code: string;
   nameEn: string;
   nameFa: string;
+  /** The only direction this type may be recorded with; null or absent means either. */
+  direction?: 'In' | 'Out' | null;
 }
 
 export const listFlowTypes = (token: string) =>
