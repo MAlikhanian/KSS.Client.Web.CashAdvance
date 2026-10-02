@@ -139,6 +139,90 @@ interface PersonBalanceRow {
   overLimit: boolean;
 }
 
+/**
+ * Inclusive day-range test, shared by the ledger table and the per-person summary so the two
+ * cannot drift. No bound set means no date filtering at all. Deliberately NOT the cover sheet's
+ * predicate, which drops undated rows unconditionally — that page lists them in a separate
+ * section, and this one has nowhere to show them, so copying it verbatim would hide rows
+ * whenever both pickers were empty. With a bound set, an undated row is outside the range.
+ */
+function inDayRange(
+  transactionDate: string | null | undefined,
+  fromDate: string,
+  toDate: string,
+): boolean {
+  if (!fromDate && !toDate) return true;
+  const d = dayOf(transactionDate);
+  if (!d) return false;
+  if (fromDate && d < fromDate) return false;
+  if (toDate && d > toDate) return false;
+  return true;
+}
+
+/**
+ * What the summary's In / Out / balance columns mean when a date range is set:
+ *   RANGE_NET            — only the entries inside the range; the balance is that range's net
+ *                          (Out − In within the range).
+ *   BALANCE_AT_RANGE_END — every entry up to the end date; the balance is what was held then.
+ * With no range set both give the all-time figures.
+ */
+type SummaryRangeMode = 'RANGE_NET' | 'BALANCE_AT_RANGE_END';
+// RANGE_NET is the requested behaviour. The other reading is kept so it can be switched here.
+const SUMMARY_RANGE_MODE: SummaryRangeMode = 'RANGE_NET';
+
+/**
+ * Per-person summary of the given (fund-scoped) entries. The In / Out / balance columns follow
+ * the date range and mode; the limit status does NOT: it always compares the ALL-TIME balance
+ * (Out − In over every given entry), because it mirrors the backend's PersonLimitService and a
+ * range-scoped figure would show someone as within their limit when they are not. Every person
+ * with an entry in the fund keeps a row, even with nothing in the range, so an over-limit
+ * person stays visible under any filter.
+ */
+function personBalanceRows(
+  transactions: ReadonlyArray<
+    Pick<TransactionView, 'personId' | 'direction' | 'amount' | 'transactionDate'>
+  >,
+  fromDate: string,
+  toDate: string,
+  mode: SummaryRangeMode,
+  limitByPerson: ReadonlyMap<string, number>,
+): PersonBalanceRow[] {
+  const from = mode === 'BALANCE_AT_RANGE_END' ? '' : fromDate;
+  const byPerson = new Map<
+    string,
+    { inflow: number; outflow: number; allInflow: number; allOutflow: number }
+  >();
+  for (const tx of transactions) {
+    const acc = byPerson.get(tx.personId) ?? { inflow: 0, outflow: 0, allInflow: 0, allOutflow: 0 };
+    const inflow = isInflow(tx.direction);
+    if (inflow) acc.allInflow += tx.amount;
+    else acc.allOutflow += tx.amount;
+    if (inDayRange(tx.transactionDate, from, toDate)) {
+      if (inflow) acc.inflow += tx.amount;
+      else acc.outflow += tx.amount;
+    }
+    byPerson.set(tx.personId, acc);
+  }
+  const rows: PersonBalanceRow[] = [];
+  for (const [personId, acc] of Array.from(byPerson.entries())) {
+    // Balance = what the person still holds and has not accounted for:
+    // paid out to them (Out) minus settled by approved factors (In).
+    // This is the figure the per-person limit caps, so it must match the backend's
+    // PersonLimitService (Out − In), not the reverse.
+    const allTimeBalance = acc.allOutflow - acc.allInflow;
+    const limit = limitByPerson.has(personId) ? limitByPerson.get(personId)! : null;
+    rows.push({
+      personId,
+      inflow: acc.inflow,
+      outflow: acc.outflow,
+      balance: acc.outflow - acc.inflow,
+      limit,
+      overLimit: limit !== null && allTimeBalance >= limit,
+    });
+  }
+  return rows.sort((a, b) => b.balance - a.balance);
+}
+
 export function CashAdvanceLedgerContent() {
   const { t } = useTranslation('cash-advance');
   const { language } = useLanguage();
@@ -290,18 +374,7 @@ export function CashAdvanceLedgerContent() {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return fundScoped
-      .filter((tx) => {
-        // No bound set means no date filtering at all. Deliberately NOT the cover sheet's
-        // predicate, which drops undated rows unconditionally — that page lists them in a
-        // separate section, and this one has nowhere to show them, so copying it verbatim
-        // would hide rows whenever both pickers were empty.
-        if (!fromDate && !toDate) return true;
-        const d = dayOf(tx.transactionDate);
-        if (!d) return false;
-        if (fromDate && d < fromDate) return false;
-        if (toDate && d > toDate) return false;
-        return true;
-      })
+      .filter((tx) => inDayRange(tx.transactionDate, fromDate, toDate))
       .filter((tx) => (personFilter ? tx.personId === personFilter : true))
       .filter((tx) =>
         directionFilter === ALL
@@ -338,34 +411,12 @@ export function CashAdvanceLedgerContent() {
     personName,
   ]);
 
-  // per-person balance summary (In minus Out), scoped to the selected fund
-  const balanceRows = useMemo<PersonBalanceRow[]>(() => {
-    const byPerson = new Map<string, { inflow: number; outflow: number }>();
-    for (const tx of fundScoped) {
-      const acc = byPerson.get(tx.personId) ?? { inflow: 0, outflow: 0 };
-      if (isInflow(tx.direction)) acc.inflow += tx.amount;
-      else acc.outflow += tx.amount;
-      byPerson.set(tx.personId, acc);
-    }
-    const rows: PersonBalanceRow[] = [];
-    for (const [personId, { inflow, outflow }] of Array.from(byPerson.entries())) {
-      // Balance = what the person still holds and has not accounted for:
-      // paid out to them (Out) minus settled by approved factors (In).
-      // This is the figure the per-person limit caps, so it must match the backend's
-      // PersonLimitService (Out − In), not the reverse.
-      const balance = outflow - inflow;
-      const limit = limitByPerson.has(personId) ? limitByPerson.get(personId)! : null;
-      rows.push({
-        personId,
-        inflow,
-        outflow,
-        balance,
-        limit,
-        overLimit: limit !== null && balance >= limit,
-      });
-    }
-    return rows.sort((a, b) => b.balance - a.balance);
-  }, [fundScoped, limitByPerson]);
+  // per-person balance summary, scoped to the selected fund and to the date range only (not to
+  // the person, direction, flow type or search filters); the limit status stays all-time
+  const balanceRows = useMemo<PersonBalanceRow[]>(
+    () => personBalanceRows(fundScoped, fromDate, toDate, SUMMARY_RANGE_MODE, limitByPerson),
+    [fundScoped, fromDate, toDate, limitByPerson],
+  );
 
   const totalIn = useMemo(
     () => filteredRows.filter((tx) => isInflow(tx.direction)).reduce((s, tx) => s + tx.amount, 0),
