@@ -687,6 +687,12 @@ export interface TransactionView extends AuditFields {
   amount: number;
   balanceAfter: number | null;
   transactionDate: string;
+  /**
+   * The source document's own date: the invoice date for an invoice settlement, the payment
+   * date for a charge-request posting. Null or absent for every other entry, or when the source
+   * has no date. transactionDate stays the booking time.
+   */
+  sourceDate?: string | null;
   description: string | null;
 }
 

@@ -955,6 +955,7 @@
       "balanceDebtor": "Debtor",
       "balanceTitle": "Per-Person Balance",
       "balanceCol": "Running balance",
+      "balanceAfterNote": "The “Balance After” column is calculated in the order entries were recorded, not in the order of the dates shown in the table.",
       "noLimit": "No limit",
       "overLimit": "At / over limit",
       "withinLimit": "Within limit",

@@ -154,16 +154,47 @@ interface PersonBalanceRow {
  * whenever both pickers were empty. With a bound set, an undated row is outside the range.
  */
 function inDayRange(
-  transactionDate: string | null | undefined,
+  isoDate: string | null | undefined,
   fromDate: string,
   toDate: string,
 ): boolean {
   if (!fromDate && !toDate) return true;
-  const d = dayOf(transactionDate);
+  const d = dayOf(isoDate);
   if (!d) return false;
   if (fromDate && d < fromDate) return false;
   if (toDate && d > toDate) return false;
   return true;
+}
+
+type LedgerDated = Pick<TransactionView, 'id' | 'transactionDate' | 'sourceDate'>;
+
+/**
+ * The ledger's one date per entry: the source document's date (invoice date, payment date) when
+ * the service sends one, otherwise the booking date. The table shows and sorts by it, and the
+ * date-range filter and the per-person in-range totals use it too, so an entry is inside a range
+ * exactly when its shown date is. A missing or unreadable sourceDate falls back, so a row is never
+ * left undated by it. The limit status does not use it: that stays on the all-time balance.
+ */
+function ledgerDate(tx: Pick<TransactionView, 'transactionDate' | 'sourceDate'>): string {
+  const s = tx.sourceDate;
+  return s && !Number.isNaN(Date.parse(s)) ? s : tx.transactionDate;
+}
+
+const timeOf = (iso: string | null | undefined): number => {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(t) ? -Infinity : t;
+};
+
+/**
+ * Newest first by ledgerDate, then by booking time, then by id, so rows sharing a day (invoice
+ * and payment dates carry no time) keep one order however the list arrives.
+ */
+function compareLedgerRows(a: LedgerDated, b: LedgerDated): number {
+  return (
+    timeOf(ledgerDate(b)) - timeOf(ledgerDate(a)) ||
+    timeOf(b.transactionDate) - timeOf(a.transactionDate) ||
+    (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+  );
 }
 
 /**
@@ -179,7 +210,8 @@ const SUMMARY_RANGE_MODE: SummaryRangeMode = 'RANGE_NET';
 
 /**
  * Per-person summary of the given (fund-scoped) entries. The In / Out / balance columns follow
- * the date range and mode; the limit status does NOT: it always compares the ALL-TIME balance
+ * the date range and mode, judged by each entry's ledgerDate (the date the table shows); the
+ * limit status does NOT: it always compares the ALL-TIME balance
  * (Out − In over every given entry), because it mirrors the backend's PersonLimitService and a
  * range-scoped figure would show someone as within their limit when they are not. Every person
  * with an entry in the fund keeps a row, even with nothing in the range, so an over-limit
@@ -187,7 +219,7 @@ const SUMMARY_RANGE_MODE: SummaryRangeMode = 'RANGE_NET';
  */
 function personBalanceRows(
   transactions: ReadonlyArray<
-    Pick<TransactionView, 'personId' | 'direction' | 'amount' | 'transactionDate'>
+    Pick<TransactionView, 'personId' | 'direction' | 'amount' | 'transactionDate' | 'sourceDate'>
   >,
   fromDate: string,
   toDate: string,
@@ -204,7 +236,7 @@ function personBalanceRows(
     const inflow = isInflow(tx.direction);
     if (inflow) acc.allInflow += tx.amount;
     else acc.allOutflow += tx.amount;
-    if (inDayRange(tx.transactionDate, from, toDate)) {
+    if (inDayRange(ledgerDate(tx), from, toDate)) {
       if (inflow) acc.inflow += tx.amount;
       else acc.outflow += tx.amount;
     }
@@ -381,7 +413,7 @@ export function CashAdvanceLedgerContent() {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return fundScoped
-      .filter((tx) => inDayRange(tx.transactionDate, fromDate, toDate))
+      .filter((tx) => inDayRange(ledgerDate(tx), fromDate, toDate))
       .filter((tx) => (personFilter ? tx.personId === personFilter : true))
       .filter((tx) =>
         directionFilter === ALL
@@ -405,7 +437,7 @@ export function CashAdvanceLedgerContent() {
           .toLowerCase();
         return hay.includes(q);
       })
-      .sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
+      .sort(compareLedgerRows);
   }, [
     fundScoped,
     personFilter,
@@ -700,7 +732,7 @@ export function CashAdvanceLedgerContent() {
                         {filteredRows.map((tx) => (
                           <TableRow key={tx.id}>
                             <TableCell className="font-mono text-xs whitespace-nowrap">
-                              {formatDate(tx.transactionDate)}
+                              {formatDate(ledgerDate(tx))}
                             </TableCell>
                             <TableCell>{fundName(tx.cashAdvanceId)}</TableCell>
                             <TableCell>{personName(tx.personId)}</TableCell>
@@ -737,6 +769,14 @@ export function CashAdvanceLedgerContent() {
                       </TableBody>
                     </Table>
                   </div>
+                  {/* Balance After is stamped when an entry is recorded, while the table is ordered
+                      by the shown date, so the column does not read as a running total down it. */}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {t('ops.ledger.balanceAfterNote', {
+                      defaultValue:
+                        'The “Balance After” column is calculated in the order entries were recorded, not in the order of the dates shown in the table.',
+                    })}
+                  </p>
                 </CardContent>
               </Card>
 
