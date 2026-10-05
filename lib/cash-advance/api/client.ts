@@ -37,6 +37,7 @@ import type {
   ChargeRequestItemInsert,
   ChargeRequestItemUpdate,
   ChargeRequestItemSeed,
+  SelectableItemView,
   CreateChargeRequestWithItems,
   InvoiceView,
   InvoiceInsert,
@@ -92,6 +93,7 @@ export type {
   ChargeRequestItemInsert,
   ChargeRequestItemUpdate,
   ChargeRequestItemSeed,
+  SelectableItemView,
   CreateChargeRequestWithItems,
   InvoiceView,
   InvoiceInsert,
@@ -278,6 +280,13 @@ export const removeChargeRequest = (entity: ChargeRequestView | { id: string }) 
 // ── Charge request items (CashAdvanceChargeRequestItem) ──
 export const listChargeRequestItems = () =>
   http<ChargeRequestItemView[]>('GET', '/charge-request-items');
+// Items an invoice can be linked to in one fund, with their linked and remaining amounts.
+// excludeInvoiceId leaves that invoice's own links out (used when correcting it).
+export const listSelectableItems = (cashAdvanceId: string, excludeInvoiceId?: string | null) => {
+  const q = new URLSearchParams({ cashAdvanceId });
+  if (excludeInvoiceId) q.set('excludeInvoiceId', excludeInvoiceId);
+  return http<SelectableItemView[]>('GET', `/charge-request-items/selectable?${q}`);
+};
 export const createChargeRequestItem = (dto: ChargeRequestItemInsert) =>
   http<ChargeRequestItemView>('POST', '/charge-request-items', dto);
 export const updateChargeRequestItem = (dto: ChargeRequestItemUpdate) =>

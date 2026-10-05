@@ -25,7 +25,7 @@ import {
 import { useTranslation } from '@/hooks/useTranslation';
 import { useLanguage } from '@/providers/i18n-provider';
 import { usePermission } from '@/hooks/use-permission';
-import { formatRial } from '@/lib/cash-advance/format';
+import { formatDate, formatRial } from '@/lib/cash-advance/format';
 import {
   submitInvoice,
   updateInvoiceFull,
@@ -35,6 +35,7 @@ import {
   listFundTranslations,
   listChargeRequests,
   listChargeRequestItems,
+  listSelectableItems,
   listProducts,
   listProductTranslations,
   listInvoices,
@@ -47,9 +48,17 @@ import {
   type ChargeRequestItemView,
   type ProductView,
   type ProductTranslationView,
+  type SelectableItemView,
 } from '@/lib/cash-advance/api/client';
 import { FundPicker } from '@/components/common/fund-picker';
 import { productDisplayName } from '@/app/[id]/components/product-picker';
+import {
+  INVOICE_ITEM_OVER_CAP,
+  isFullyUsed,
+  pickerRows,
+  shownRemaining,
+  unavailableSelected,
+} from './item-picker';
 
 const FA = 12;
 const EN = 10;
@@ -146,10 +155,54 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
       .filter((r) => r.cashAdvanceId === cashAdvanceId && r.requesterPersonId === personId)
       .map((r) => r.id),
   ), [chargeRequests, cashAdvanceId, personId]);
-  const selectableItems = useMemo(
-    () => chargeItems.filter((i) => myRequestIds.has(i.cashAdvanceChargeRequestId)),
-    [chargeItems, myRequestIds],
-  );
+
+  // The picker's rows for the picked fund, with linked and remaining amounts. When correcting,
+  // the invoice's own links are left out of the linked amounts.
+  const [itemRows, setItemRows] = useState<SelectableItemView[]>([]);
+  const [itemRowsState, setItemRowsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [itemRowsVersion, setItemRowsVersion] = useState(0);
+  const [itemQuery, setItemQuery] = useState('');
+  const [showAllItems, setShowAllItems] = useState(false);
+  const [nowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!cashAdvanceId) {
+      setItemRows([]);
+      setItemRowsState('idle');
+      return;
+    }
+    let current = true;
+    setItemRowsState('loading');
+    listSelectableItems(cashAdvanceId, editId)
+      .then((rows) => {
+        if (!current) return;
+        setItemRows(rows);
+        setItemRowsState('ready');
+      })
+      .catch(() => {
+        if (!current) return;
+        setItemRows([]);
+        setItemRowsState('error');
+      });
+    return () => {
+      current = false;
+    };
+  }, [cashAdvanceId, editId, itemRowsVersion]);
+
+  const productNameOf = (productId: string) => {
+    const product = products.find((p) => p.id === productId) ?? null;
+    return product ? productDisplayName(product, productTranslations, langId) : '—';
+  };
+  const ownItemRows = itemRows.filter((r) => myRequestIds.has(r.chargeRequestId));
+  const { visible: visibleItems, hiddenCount } = pickerRows(itemRows, {
+    ownRequestIds: myRequestIds,
+    selected: selectedItemIds,
+    query: itemQuery,
+    showAll: showAllItems,
+    nowMs,
+    productName: productNameOf,
+  });
+  const unavailableIds = itemRowsState === 'ready' ? unavailableSelected(itemRows, selectedItemIds) : [];
 
   // Reset the item selection when the USER changes the fund — but not during edit prefill.
   useEffect(() => {
@@ -277,7 +330,19 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
         router.push(`/invoice/${created.id}`);
       }
     } catch (e) {
-      showError((e as Error)?.message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }));
+      const message = (e as Error)?.message;
+      if (message === INVOICE_ITEM_OVER_CAP) {
+        showError(
+          t('ops.invoiceSubmit.overCap', {
+            defaultValue:
+              'The invoices linked to one of the selected items would exceed 110% of its requested amount. Check the remaining amounts, then change the items or the invoice amount.',
+          }),
+        );
+        // The amounts may have moved since the list was loaded.
+        setItemRowsVersion((v) => v + 1);
+      } else {
+        showError(message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }));
+      }
     } finally {
       setSaving(false);
     }
@@ -443,28 +508,123 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {selectableItems.length === 0 && (
+                {itemRowsState === 'loading' && (
+                  <p className="text-center py-6 text-sm text-muted-foreground">
+                    {t('ops.common.loading', { defaultValue: 'Loading...' })}
+                  </p>
+                )}
+                {itemRowsState === 'error' && (
+                  <p className="text-center py-6 text-sm text-destructive">
+                    {t('ops.invoiceSubmit.picker.loadError', {
+                      defaultValue: 'Could not load the items for this fund.',
+                    })}
+                  </p>
+                )}
+                {itemRowsState !== 'loading' && itemRowsState !== 'error' && ownItemRows.length === 0 && (
                   <p className="text-center py-6 text-sm text-muted-foreground">
                     {t('ops.invoiceSubmit.noItems', { defaultValue: 'No items available for the selected fund' })}
                   </p>
                 )}
-                {selectableItems.map((item) => {
-                  const product = products.find((p) => p.id === item.productId) ?? null;
-                  const name = product ? productDisplayName(product, productTranslations, langId) : '—';
-                  const checked = selectedItemIds.has(item.id);
+                {itemRowsState === 'ready' && ownItemRows.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Input
+                        className="flex-1 min-w-48"
+                        value={itemQuery}
+                        onChange={(e) => setItemQuery(e.target.value)}
+                        placeholder={t('ops.invoiceSubmit.picker.search', {
+                          defaultValue: 'Search by item, description or request number',
+                        })}
+                      />
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={showAllItems}
+                          onCheckedChange={(v) => setShowAllItems(v === true)}
+                        />
+                        {t('ops.invoiceSubmit.picker.showAll', { defaultValue: 'Show all' })}
+                      </label>
+                    </div>
+                    {!itemQuery.trim() && !showAllItems && hiddenCount > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('ops.invoiceSubmit.picker.hiddenCount', {
+                          count: hiddenCount,
+                          defaultValue:
+                            'Hidden items: {{count}} (90% or more already invoiced, or requested more than a month ago). Search, or tick Show all, to see them.',
+                        })}
+                      </p>
+                    )}
+                    {itemQuery.trim() !== '' && visibleItems.length === 0 && (
+                      <p className="text-center py-4 text-sm text-muted-foreground">
+                        {t('ops.invoiceSubmit.picker.noMatch', { defaultValue: 'No items match your search.' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {itemRowsState === 'ready' &&
+                  visibleItems.map((item) => {
+                    const checked = selectedItemIds.has(item.itemId);
+                    return (
+                      <label
+                        key={item.itemId}
+                        className="flex items-center gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleItem(item.itemId)}
+                          disabled={!canSubmit}
+                        />
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-medium">{productNameOf(item.productId)}</span>
+                          {item.description && (
+                            <span className="block text-xs text-muted-foreground truncate">{item.description}</span>
+                          )}
+                        </span>
+                        <span className="text-xs text-muted-foreground text-end">
+                          <span className="block font-mono">{item.requestNumber ?? '—'}</span>
+                          <span className="block">
+                            {t('ops.invoiceSubmit.picker.requestDate', {
+                              date: formatDate(item.requestDate),
+                              defaultValue: 'Requested on {{date}}',
+                            })}
+                          </span>
+                        </span>
+                        <span className="text-end">
+                          <span className="block text-sm font-mono">
+                            {t('ops.invoiceSubmit.picker.remaining', {
+                              amount: formatRial(shownRemaining(item)),
+                              defaultValue: 'Remaining: {{amount}}',
+                            })}
+                          </span>
+                          <span className="block text-xs text-muted-foreground font-mono">
+                            {t('ops.invoiceSubmit.picker.requested', {
+                              amount: formatRial(item.requestedAmount),
+                              defaultValue: 'Requested: {{amount}}',
+                            })}
+                          </span>
+                        </span>
+                        {isFullyUsed(item) && (
+                          <Badge variant="secondary">
+                            {t('ops.invoiceSubmit.picker.fullyUsed', { defaultValue: 'Fully used' })}
+                          </Badge>
+                        )}
+                      </label>
+                    );
+                  })}
+                {/* Selected items the read no longer returns are still sent on save, so they stay
+                    listed where the user can see and remove them. */}
+                {unavailableIds.map((id) => {
+                  const item = chargeItems.find((i) => i.id === id) ?? null;
                   return (
                     <label
-                      key={item.id}
+                      key={id}
                       className="flex items-center gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 cursor-pointer"
                     >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={() => toggleItem(item.id)}
-                        disabled={!canSubmit}
-                      />
-                      <span className="flex-1 font-medium">{name}</span>
-                      <span className="text-xs text-muted-foreground font-mono">{requestNumberOf(item)}</span>
-                      <span className="text-sm font-mono">{formatRial(item.lineTotal)}</span>
+                      <Checkbox checked onCheckedChange={() => toggleItem(id)} disabled={!canSubmit} />
+                      <span className="flex-1 font-medium">{item ? productNameOf(item.productId) : '—'}</span>
+                      <span className="text-xs text-muted-foreground font-mono">{item ? requestNumberOf(item) : '—'}</span>
+                      <Badge variant="destructive">
+                        {t('ops.invoiceSubmit.picker.unavailable', { defaultValue: 'No longer available' })}
+                      </Badge>
                     </label>
                   );
                 })}

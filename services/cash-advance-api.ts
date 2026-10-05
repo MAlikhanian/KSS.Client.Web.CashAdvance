@@ -459,6 +459,33 @@ export interface ChargeRequestItemUpdate {
 export const listChargeRequestItems = (token: string) =>
   req<ChargeRequestItemView[]>(token, 'GET', `/Api/CashAdvanceScopedRead/ListChargeRequestItems`);
 
+// An item an invoice can be linked to, with how much of it invoices already cover. One row per
+// live, non-rejected item in the fund, scoped like ListChargeRequestItems. linkedAmount counts
+// non-rejected invoices only, each invoice's amount split across its items by line total, and
+// leaves out excludeInvoiceId (the invoice being corrected). It is computed by the same function
+// as the server's link cap. remainingAmount = requestedAmount - linkedAmount and can be negative.
+export interface SelectableItemView {
+  itemId: string;
+  chargeRequestId: string;
+  requestNumber: string | null;
+  requestDate: string | null;
+  productId: string;
+  description: string | null;
+  requestedAmount: number;
+  linkedAmount: number;
+  remainingAmount: number;
+}
+
+export const listSelectableItems = (
+  token: string,
+  cashAdvanceId: string,
+  excludeInvoiceId?: string | null,
+) => {
+  const q = new URLSearchParams({ cashAdvanceId });
+  if (excludeInvoiceId) q.set('excludeInvoiceId', excludeInvoiceId);
+  return req<SelectableItemView[]>(token, 'GET', `/Api/CashAdvanceScopedRead/ListSelectableItems?${q}`);
+};
+
 export const createChargeRequestItem = (token: string, dto: ChargeRequestItemInsert) =>
   req<ChargeRequestItemView>(token, 'POST', `/Api/CashAdvanceChargeRequestItem/AddDto`, dto);
 
