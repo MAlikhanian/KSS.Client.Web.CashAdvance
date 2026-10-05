@@ -41,6 +41,7 @@ import { usePermission } from '@/hooks/use-permission';
 import { formatDate, formatDateTime, formatRial } from '@/lib/cash-advance/format';
 import { safeBack } from '@/lib/cash-advance/safe-back';
 import { STATUS_APPROVED, approvalCommentAt } from '@/lib/cash-advance/approval-comment';
+import { INVOICE_DECISION_LOCKED, decisionsOpen } from '@/lib/cash-advance/decision-lock';
 import {
   listInvoices,
   listFunds,
@@ -286,15 +287,43 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
       ? { statusId, reason: '' }
       : { ...d, statusId };
 
+  // A refused decision. A locked invoice has moved on since the page loaded (its decision cards
+  // close on reload); a concurrency refusal means another decision on it was being saved at the
+  // same time. Both reload the invoice. Anything else shows the server's message.
+  const decisionFailed = async (e: unknown) => {
+    const message = (e as Error)?.message;
+    if (message === INVOICE_DECISION_LOCKED) {
+      showError(
+        t('ops.invoiceDetail.decisionLocked', {
+          defaultValue: 'The decision on this invoice is locked and can no longer be changed.',
+        }),
+      );
+      await refresh();
+    } else if (message === 'CONCURRENCY_ERROR') {
+      showError(
+        t('ops.invoiceDetail.decisionConcurrency', {
+          defaultValue: 'The invoice was changed at the same time; refresh and try again',
+        }),
+      );
+      await refresh();
+    } else {
+      showError(message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }));
+    }
+  };
+
   const saveFm = async () => {
     if (invoice.correctionRequested) return;
     if (isRejectedStatus(fmDraft.statusId) && !fmDraft.reason.trim())
       return showError(t('ops.invoiceDetail.reason', { defaultValue: 'Reason' }));
-    await invoiceFinancialManagerDecide({
-      invoiceId: invoice.id,
-      statusId: fmDraft.statusId,
-      statusDescription: decisionDescription('fm', fmDraft),
-    });
+    try {
+      await invoiceFinancialManagerDecide({
+        invoiceId: invoice.id,
+        statusId: fmDraft.statusId,
+        statusDescription: decisionDescription('fm', fmDraft),
+      });
+    } catch (e) {
+      return decisionFailed(e);
+    }
     showSuccess(t('ops.invoiceDetail.toasts.fmSaved', { defaultValue: 'Finance decision saved' }));
     await refresh();
   };
@@ -302,11 +331,15 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
     if (invoice.correctionRequested) return;
     if (isRejectedStatus(ceoDraft.statusId) && !ceoDraft.reason.trim())
       return showError(t('ops.invoiceDetail.reason', { defaultValue: 'Reason' }));
-    await invoiceCeoDecide({
-      invoiceId: invoice.id,
-      statusId: ceoDraft.statusId,
-      statusDescription: decisionDescription('ceo', ceoDraft),
-    });
+    try {
+      await invoiceCeoDecide({
+        invoiceId: invoice.id,
+        statusId: ceoDraft.statusId,
+        statusDescription: decisionDescription('ceo', ceoDraft),
+      });
+    } catch (e) {
+      return decisionFailed(e);
+    }
     showSuccess(t('ops.invoiceDetail.toasts.ceoSaved', { defaultValue: 'CEO decision saved' }));
     await refresh();
   };
@@ -621,8 +654,8 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
           {/* Sidebar — staged decision cards */}
           <div className="col-span-1">
             <div className="grid gap-5 lg:gap-7.5">
-              {/* ── Finance Manager decision ── */}
-              {canFm && (
+              {/* ── Finance Manager decision (open only while the CEO stage is pending) ── */}
+              {canFm && decisionsOpen(invoice) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>
@@ -688,8 +721,8 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                 </Card>
               )}
 
-              {/* ── CEO decision (gated on FM approval) ── */}
-              {canCeo && (
+              {/* ── CEO decision (open only while pending; gated on FM approval) ── */}
+              {canCeo && decisionsOpen(invoice) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>

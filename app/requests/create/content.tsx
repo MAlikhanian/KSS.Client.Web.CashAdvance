@@ -52,6 +52,7 @@ import {
   type ProductTranslationView,
 } from '@/lib/cash-advance/api/client';
 import { ProductPicker, productDisplayName } from '@/app/[id]/components/product-picker';
+import { chargeWindowMessage } from './charge-window';
 
 const FA = 12;
 const EN = 10;
@@ -109,6 +110,9 @@ export function CreateChargeRequestContent() {
   const [cashAdvanceId, setCashAdvanceId] = useState<string>('');
   const [items, setItems] = useState<DraftItem[]>([]);
   const [saving, setSaving] = useState(false);
+  // The last refusal from the server, kept beside the submit button as well as shown in a toast,
+  // because it can carry a time the user needs (for example when the next submission is possible).
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [today, setToday] = useState('');
 
   // Item sub-form
@@ -196,6 +200,7 @@ export function CreateChargeRequestContent() {
     canModify && cashAdvanceId !== '' && items.length > 0 && !overCeiling && !saving;
 
   const handleSubmit = async () => {
+    setSubmitError(null);
     if (!cashAdvanceId) {
       showError(t('ops.requests.validation.fundRequired', { defaultValue: 'Fund is required' }));
       return;
@@ -223,7 +228,13 @@ export function CreateChargeRequestContent() {
       showSuccess(t('ops.requests.toasts.created', { defaultValue: 'Request created' }));
       router.push(`/${created.id}`);
     } catch (e) {
-      showError(translateApiError((e as Error)?.message ?? '', t));
+      const raw = (e as Error)?.message ?? '';
+      const windowText = chargeWindowMessage(raw);
+      const text = windowText
+        ? t(windowText.key, { defaultValue: windowText.defaultValue })
+        : translateApiError(raw, t);
+      setSubmitError(text);
+      showError(text);
     } finally {
       setSaving(false);
     }
@@ -299,7 +310,15 @@ export function CreateChargeRequestContent() {
                       {t('ops.requests.form.fund', { defaultValue: 'Fund' })}{' '}
                       <span className="text-destructive">*</span>
                     </Label>
-                    <Select value={cashAdvanceId || undefined} onValueChange={setCashAdvanceId} disabled={!canModify}>
+                    <Select
+                      value={cashAdvanceId || undefined}
+                      onValueChange={(v) => {
+                        setCashAdvanceId(v);
+                        // A refusal is about the fund it was made for; drop it when the fund changes.
+                        setSubmitError(null);
+                      }}
+                      disabled={!canModify}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder={t('ops.requests.form.fundPlaceholder', { defaultValue: 'Select a fund' })} />
                       </SelectTrigger>
@@ -507,6 +526,25 @@ export function CreateChargeRequestContent() {
                     })}
                   </span>
                 </div>
+                <div className="mb-4 flex items-start gap-2">
+                  <RiInformationFill className="text-amber-600 dark:text-amber-400 size-5 shrink-0 mt-0.5" />
+                  <span className="text-sm text-card-foreground">
+                    {t('ops.requests.create.windowRule', {
+                      defaultValue:
+                        'Recharge requests can be submitted only from 13:00 to 16:00 Tehran time, and only one per fund per day.',
+                    })}
+                  </span>
+                </div>
+                {submitError && (
+                  <div className="mb-4">
+                    <Alert variant="destructive">
+                      <AlertIcon>
+                        <RiErrorWarningFill />
+                      </AlertIcon>
+                      <AlertTitle>{submitError}</AlertTitle>
+                    </Alert>
+                  </div>
+                )}
                 <div className="flex justify-end">
                   <Button onClick={handleSubmit} disabled={!canSubmit}>
                     <Save className="size-4" />

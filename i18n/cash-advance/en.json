@@ -540,6 +540,10 @@
         "total": "Total",
         "remaining": "Remaining under fund amount",
         "info": "After saving, you will be taken to the request page to submit it for approval.",
+        "windowRule": "Recharge requests can be submitted only from 13:00 to 16:00 Tehran time, and only one per fund per day.",
+        "windowNotYet": "Recharge requests can be submitted only from 13:00 to 16:00 Tehran time. You can submit today from 13:00.",
+        "windowClosed": "Recharge requests can be submitted only from 13:00 to 16:00 Tehran time. You can submit tomorrow from 13:00.",
+        "windowDailyLimit": "You have already submitted a recharge request for this fund today. You can submit the next one tomorrow from 13:00 Tehran time.",
         "submit": "Create Request",
         "operations": "Operations",
         "validation": {
@@ -753,6 +757,8 @@
       "fmDecisionTitle": "Finance Manager Decision",
       "ceoDecisionTitle": "CEO Decision",
       "ceoBlockedHint": "Waiting for the finance manager's approval first.",
+      "decisionLocked": "The decision on this invoice is locked and can no longer be changed.",
+      "decisionConcurrency": "The invoice was changed at the same time; refresh and try again",
       "decision": "Decision",
       "approve": "Approve",
       "reject": "Reject",
@@ -884,6 +890,7 @@
         "errUnexpected": "An unexpected error occurred",
         "errIdsRequired": "No invoices were selected",
         "errInvalidStage": "The decision stage is not valid",
+        "errDecisionLocked": "The decision on this invoice is locked and can no longer be changed",
         "callError": "{{message}} Nothing was processed for {{count}} invoices."
       }
     },

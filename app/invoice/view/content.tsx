@@ -59,6 +59,7 @@ import {
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
 import { withQuery } from '@/lib/cash-advance/safe-back';
 import { approvalCommentAt } from '@/lib/cash-advance/approval-comment';
+import { INVOICE_DECISION_LOCKED, decisionsOpen } from '@/lib/cash-advance/decision-lock';
 import { FundPicker, fundDisplayName } from '@/components/common/fund-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -142,7 +143,7 @@ const writeStoredSearch = (value: string) => {
 type DecideStage = 'fm' | 'ceo';
 const BATCH_MAX = 100;
 const eligibleAt = (i: InvoiceView, stage: DecideStage) => {
-  if (i.correctionRequested) return false;
+  if (i.correctionRequested || !decisionsOpen(i)) return false;
   return stage === 'fm'
     ? i.financialManagerStatusId === 1
     : i.financialManagerStatusId === 2 && i.ceoStatusId === 1;
@@ -352,6 +353,10 @@ export function InvoiceViewContent() {
         return t('ops.invoiceView.bulk.errIdsRequired', { defaultValue: 'No invoices were selected' });
       case 'INVALID_STAGE':
         return t('ops.invoiceView.bulk.errInvalidStage', { defaultValue: 'The decision stage is not valid' });
+      case INVOICE_DECISION_LOCKED:
+        return t('ops.invoiceView.bulk.errDecisionLocked', {
+          defaultValue: 'The decision on this invoice is locked and can no longer be changed',
+        });
       default:
         return t('ops.invoiceView.bulk.errorGeneric', {
           code: code || '—',
