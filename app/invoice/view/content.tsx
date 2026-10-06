@@ -59,7 +59,7 @@ import {
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
 import { withQuery } from '@/lib/cash-advance/safe-back';
 import { approvalCommentAt } from '@/lib/cash-advance/approval-comment';
-import { INVOICE_DECISION_LOCKED, decisionsOpen } from '@/lib/cash-advance/decision-lock';
+import { INVOICE_DECISION_LOCKED, correctionOpen, decisionsOpen } from '@/lib/cash-advance/decision-lock';
 import { FundPicker, fundDisplayName } from '@/components/common/fund-picker';
 import { Sidebar } from './components/sidebar';
 
@@ -642,7 +642,7 @@ export function InvoiceViewContent() {
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="inline-flex items-center justify-center gap-1">
-                              {i.financialManagerStatusId === 1 && (
+                              {correctionOpen(i) && (
                                 <Button asChild variant="ghost" size="sm" mode="icon">
                                   <Link href={`/invoice/submit?id=${i.id}`}>
                                     <Pencil className="size-4" />

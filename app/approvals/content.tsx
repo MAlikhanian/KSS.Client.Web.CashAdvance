@@ -165,7 +165,7 @@ export function CashAdvanceApprovalsContent() {
       amount: r.amount,
       date: r.requestedAt ?? r.createdAt,
       queue,
-      href: `/cash-advance/${r.id}`,
+      href: `/${r.id}`,
     });
     const invRow = (i: InvoiceView, queue: Queue): Row => ({
       kind: 'invoice',
@@ -176,7 +176,7 @@ export function CashAdvanceApprovalsContent() {
       amount: i.invoiceAmount,
       date: i.invoiceDate ?? i.createdAt,
       queue,
-      href: `/cash-advance/invoice/${i.id}`,
+      href: `/invoice/${i.id}`,
     });
     // Requests: CEO first, then FM
     if (canCeo) {

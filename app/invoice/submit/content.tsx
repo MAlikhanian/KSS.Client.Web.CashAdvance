@@ -59,6 +59,7 @@ import {
   shownRemaining,
   unavailableSelected,
 } from './item-picker';
+import { correctionOpen } from '@/lib/cash-advance/decision-lock';
 
 const FA = 12;
 const EN = 10;
@@ -225,7 +226,8 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
         ]);
         const inv = invAll.find((x) => x.id === editId) ?? null;
         const owner = inv?.createdBy === personId;
-        const editable = inv?.financialManagerStatusId === 1; // editable until first FM approval
+        // Editable until the first Finance decision, and never once settled.
+        const editable = !!inv && correctionOpen(inv);
         if (!inv || !owner || !editable) {
           showError(
             t('ops.invoiceSubmit.notEditable', { defaultValue: 'This invoice can no longer be edited.' }),
@@ -339,6 +341,17 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
           }),
         );
         // The amounts may have moved since the list was loaded.
+        setItemRowsVersion((v) => v + 1);
+      } else if (message === 'CONCURRENCY_ERROR') {
+        // Another save on the same invoice or items held the record for longer than the server
+        // waits. The form keeps what was entered, so the user can simply try again; the item
+        // amounts are reloaded because the other save may have changed them.
+        showError(
+          t('ops.invoiceSubmit.concurrency', {
+            defaultValue:
+              'Another change to this invoice or its items was being saved at the same time, and yours could not be saved. Please try again.',
+          }),
+        );
         setItemRowsVersion((v) => v + 1);
       } else {
         showError(message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }));

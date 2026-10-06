@@ -552,6 +552,11 @@ export interface InvoiceView extends AuditFields {
   invoiceDate: string | null;
   description: string | null;
   isApproved: boolean;
+  /**
+   * Settled by the server's rule: approved, or carrying a live ledger posting against the invoice.
+   * Absent until the service sends it; the screens then fall back to isApproved alone.
+   */
+  isSettled?: boolean;
   approvalState: string | null;
   // Two-stage approval (seed 1=Pending, 2=Approved, 3=Rejected)
   financialManagerStatusId: number;

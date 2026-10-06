@@ -803,6 +803,7 @@
       "itemsHint": "Select the items from your own requests that this invoice covers.",
       "noItems": "No items available for the selected fund.",
       "overCap": "The invoices linked to one of the selected items would exceed 110% of its requested amount. Check the remaining amounts, then change the items or the invoice amount.",
+      "concurrency": "Another change to this invoice or its items was being saved at the same time, and yours could not be saved. Please try again.",
       "picker": {
         "search": "Search by item, description or request number",
         "showAll": "Show all",
