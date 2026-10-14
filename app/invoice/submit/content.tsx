@@ -54,6 +54,7 @@ import { FundPicker } from '@/components/common/fund-picker';
 import { productDisplayName } from '@/app/[id]/components/product-picker';
 import {
   INVOICE_ITEM_OVER_CAP,
+  capWaived,
   isFullyUsed,
   pickerRows,
   shownRemaining,
@@ -602,12 +603,19 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
                           </span>
                         </span>
                         <span className="text-end">
-                          <span className="block text-sm font-mono">
-                            {t('ops.invoiceSubmit.picker.remaining', {
-                              amount: formatRial(shownRemaining(item)),
-                              defaultValue: 'Remaining: {{amount}}',
-                            })}
-                          </span>
+                          {/* An item with no cap has no meaningful remaining amount. */}
+                          {capWaived(item) ? (
+                            <span className="block text-sm">
+                              {t('ops.ledger.noLimit', { defaultValue: 'No limit' })}
+                            </span>
+                          ) : (
+                            <span className="block text-sm font-mono">
+                              {t('ops.invoiceSubmit.picker.remaining', {
+                                amount: formatRial(shownRemaining(item)),
+                                defaultValue: 'Remaining: {{amount}}',
+                              })}
+                            </span>
+                          )}
                           <span className="block text-xs text-muted-foreground font-mono">
                             {t('ops.invoiceSubmit.picker.requested', {
                               amount: formatRial(item.requestedAmount),

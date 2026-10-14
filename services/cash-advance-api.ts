@@ -474,6 +474,11 @@ export interface SelectableItemView {
   requestedAmount: number;
   linkedAmount: number;
   remainingAmount: number;
+  /**
+   * Whether the 110% cap applies to this item. False for items created before the cap took
+   * effect, which carry no cap. Absent (an older service) means the cap applies.
+   */
+  capApplies?: boolean;
 }
 
 export const listSelectableItems = (

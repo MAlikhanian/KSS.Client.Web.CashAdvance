@@ -8,7 +8,7 @@ import type { SelectableItemView } from '@/lib/cash-advance/api/client';
  * through search and "show all", and an item that is already selected is always listed. Rejected
  * invoices do not count (the server leaves them out of linkedAmount), so an item comes back when
  * one of its invoices is rejected. The server's 110% cap is the enforcement; this module only
- * decides what is offered.
+ * decides what is offered. Items the cap does not apply to skip the 90% rule (see capWaived).
  *
  * Kept free of React, fetch and i18n so it can be asserted without a browser.
  */
@@ -24,8 +24,13 @@ const TEHRAN_OFFSET_MS = 3.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const tehranDay = (ms: number) => Math.floor((ms + TEHRAN_OFFSET_MS) / DAY_MS);
 
+// An item created before the cap took effect carries no cap (the service sends capApplies false).
+// It is never hidden for being mostly invoiced and never shown as used up. A missing flag means
+// the cap applies.
+export const capWaived = (r: SelectableItemView) => r.capApplies === false;
+
 export const isMostlyLinked = (r: SelectableItemView) =>
-  r.linkedAmount >= HIDE_AT_LINKED_SHARE * r.requestedAmount;
+  !capWaived(r) && r.linkedAmount >= HIDE_AT_LINKED_SHARE * r.requestedAmount;
 
 export const isOld = (r: SelectableItemView, nowMs: number) => {
   const at = r.requestDate ? Date.parse(r.requestDate) : NaN;
@@ -36,7 +41,7 @@ export const shownByDefault = (r: SelectableItemView, nowMs: number) =>
   !isMostlyLinked(r) && !isOld(r, nowMs);
 
 // The remaining amount can be negative for items already over-linked; it is shown as zero.
-export const isFullyUsed = (r: SelectableItemView) => r.remainingAmount <= 0;
+export const isFullyUsed = (r: SelectableItemView) => !capWaived(r) && r.remainingAmount <= 0;
 export const shownRemaining = (r: SelectableItemView) => Math.max(0, r.remainingAmount);
 
 // Search text is compared after folding Persian and Arabic-Indic digits to ASCII, Arabic kaf and
