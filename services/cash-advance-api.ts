@@ -185,6 +185,19 @@ export interface CashAdvanceView extends AuditFields {
   amount: number;
   worksiteId: string;
   isActive: boolean;
+  /**
+   * Display names of the people currently in charge of the fund, added by this app's own fund
+   * routes (never sent by the service). Names only: no person ids or national ids reach the
+   * browser. Empty when the fund has no current holder or none of them could be named.
+   */
+  holderNames?: string[];
+}
+
+// A fund row as the service returns it: the ids of the people currently in charge of the fund
+// (in charge now, earliest start first). Only the server reads it; the routes replace it with
+// holderNames before anything reaches the browser.
+export interface CashAdvanceServiceRow extends Omit<CashAdvanceView, 'holderNames'> {
+  holderPersonIds?: string[];
 }
 
 export interface CashAdvanceInsert {
@@ -203,13 +216,13 @@ export interface CashAdvanceUpdate {
 }
 
 export const listCashAdvances = (token: string) =>
-  req<CashAdvanceView[]>(token, 'GET', `/Api/CashAdvance/ToListAll`);
+  req<CashAdvanceServiceRow[]>(token, 'GET', `/Api/CashAdvance/ToListAll`);
 
 // Scoped by responsibility: every fund with Request.ReadAll, otherwise only the funds the
 // caller is currently in charge of. For the new-request picker. The admin fund list above is
 // deliberately left alone — the administration screens still show everything.
 export const listMyCashAdvances = (token: string) =>
-  req<CashAdvanceView[]>(token, 'GET', `/Api/CashAdvanceScopedRead/ListCashAdvances`);
+  req<CashAdvanceServiceRow[]>(token, 'GET', `/Api/CashAdvanceScopedRead/ListCashAdvances`);
 
 export const createCashAdvance = (token: string, dto: CashAdvanceInsert) =>
   req<CashAdvanceView>(token, 'POST', `/Api/CashAdvance/AddDto`, dto);

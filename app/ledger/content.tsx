@@ -44,6 +44,7 @@ import {
 import { useTranslation } from '@/hooks/useTranslation';
 import { useLanguage } from '@/providers/i18n-provider';
 import { formatRial, formatDate } from '@/lib/cash-advance/format';
+import { fundLabel, fundTitle } from '@/lib/cash-advance/fund-label';
 import {
   listTransactions,
   createTransaction,
@@ -607,7 +608,12 @@ export function CashAdvanceLedgerContent() {
                           </SelectItem>
                           {myFunds.map((f) => (
                             <SelectItem key={f.id} value={f.id}>
-                              {fundName(f.id)}
+                              <span
+                                className="truncate"
+                                title={fundTitle(fundName(f.id), f.code, f.holderNames, langId)}
+                              >
+                                {fundLabel(fundName(f.id), f.code, f.holderNames, langId)}
+                              </span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -923,7 +929,12 @@ export function CashAdvanceLedgerContent() {
                       .filter((f) => f.isActive || f.id === draft.cashAdvanceId)
                       .map((f) => (
                         <SelectItem key={f.id} value={f.id}>
-                          {fundName(f.id)}
+                          <span
+                            className="truncate"
+                            title={fundTitle(fundName(f.id), f.code, f.holderNames, langId)}
+                          >
+                            {fundLabel(fundName(f.id), f.code, f.holderNames, langId)}
+                          </span>
                         </SelectItem>
                       ))}
                   </SelectContent>

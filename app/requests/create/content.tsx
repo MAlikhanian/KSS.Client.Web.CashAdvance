@@ -40,6 +40,7 @@ import { useLanguage } from '@/providers/i18n-provider';
 import { usePermission } from '@/hooks/use-permission';
 import { translateApiError } from '@/lib/format-utils';
 import { formatRial, formatDate } from '@/lib/cash-advance/format';
+import { fundLabel, fundTitle } from '@/lib/cash-advance/fund-label';
 import {
   listMyFunds,
   listFundTranslations,
@@ -327,7 +328,12 @@ export function CreateChargeRequestContent() {
                           .filter((f) => f.isActive || f.id === cashAdvanceId)
                           .map((f) => (
                             <SelectItem key={f.id} value={f.id}>
-                              {fundName(f.id)}
+                              <span
+                                className="truncate"
+                                title={fundTitle(fundName(f.id), f.code, f.holderNames, langId)}
+                              >
+                                {fundLabel(fundName(f.id), f.code, f.holderNames, langId)}
+                              </span>
                             </SelectItem>
                           ))}
                       </SelectContent>

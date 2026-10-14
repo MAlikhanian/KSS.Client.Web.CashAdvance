@@ -46,6 +46,7 @@ import {
   type PersonDirectoryRecord,
 } from '@/lib/cash-advance/api/client';
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
+import { fundLabel, fundTitle } from '@/lib/cash-advance/fund-label';
 import { withQuery } from '@/lib/cash-advance/safe-back';
 import { personDisplayName } from './components/person-picker';
 import { Sidebar } from './components/sidebar';
@@ -248,7 +249,12 @@ export function CashAdvanceRequestsContent() {
                         </SelectItem>
                         {myFunds.map((f) => (
                           <SelectItem key={f.id} value={f.id}>
-                            {fundName(f.id)}
+                            <span
+                              className="truncate"
+                              title={fundTitle(fundName(f.id), f.code, f.holderNames, langId)}
+                            >
+                              {fundLabel(fundName(f.id), f.code, f.holderNames, langId)}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>

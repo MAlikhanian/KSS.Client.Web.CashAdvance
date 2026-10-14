@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { apiErrorResponse } from '@/lib/api-error';
+import { withHolderNames } from '@/lib/cash-advance/server/fund-holders';
 import { listMyCashAdvances } from '@/services/cash-advance-api';
 
 // GET /api/cash-advance/funds/my — funds the caller may raise a request against:
@@ -13,7 +14,9 @@ export async function GET() {
     if (!session?.accessToken) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.json(await listMyCashAdvances(session.accessToken));
+    return NextResponse.json(
+      await withHolderNames(await listMyCashAdvances(session.accessToken), session.accessToken),
+    );
   } catch (error) {
     return apiErrorResponse(error, 'listing funds in charge');
   }

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
+import { fundLabel, fundNameWithHolders, fundSearchText, fundTitle } from '@/lib/cash-advance/fund-label';
 import type {
   CashAdvanceView,
   CashAdvanceTranslationView,
@@ -71,9 +72,26 @@ export function FundPicker({
             aria-expanded={open}
             className="w-full justify-between"
           >
-            <span className="truncate">
+            <span
+              className="truncate"
+              title={
+                selected
+                  ? fundTitle(
+                      fundDisplayName(selected.id, translations, funds, langId),
+                      selected.code,
+                      selected.holderNames,
+                      langId,
+                    )
+                  : undefined
+              }
+            >
               {selected
-                ? `${fundDisplayName(selected.id, translations, funds, langId)} (${selected.code})`
+                ? fundLabel(
+                    fundDisplayName(selected.id, translations, funds, langId),
+                    selected.code,
+                    selected.holderNames,
+                    langId,
+                  )
                 : placeholder ??
                   t('ops.invoices.form.fundPlaceholder', {
                     defaultValue: 'Select a fund',
@@ -99,7 +117,7 @@ export function FundPicker({
                   return (
                     <CommandItem
                       key={f.id}
-                      value={`${name} ${f.code}`.trim()}
+                      value={fundSearchText(name, f.code, f.holderNames)}
                       onSelect={() => {
                         onChange(f.id);
                         setOpen(false);
@@ -111,7 +129,12 @@ export function FundPicker({
                           value === f.id ? 'opacity-100' : 'opacity-0',
                         )}
                       />
-                      <span className="flex-1">{name}</span>
+                      <span
+                        className="flex-1 truncate"
+                        title={fundTitle(name, f.code, f.holderNames, langId)}
+                      >
+                        {fundNameWithHolders(name, f.holderNames, langId)}
+                      </span>
                       <span className="text-xs text-muted-foreground font-mono">
                         {f.code}
                       </span>
