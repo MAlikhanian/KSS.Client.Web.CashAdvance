@@ -101,6 +101,12 @@ function showError(msg: string) {
   );
 }
 
+// Optional comment on an APPROVE decision, per request approval stage. The CEO stage covers the
+// whole request and each line item. A rejection always carries its required reason, whatever this
+// list says. A stage takes the comment when it is in this list; adding 'fm' switches it on there.
+const REQUEST_APPROVAL_COMMENT_STAGES: ReadonlyArray<'fm' | 'ceo'> = ['ceo'];
+const approvalCommentAt = (stage: 'fm' | 'ceo') => REQUEST_APPROVAL_COMMENT_STAGES.includes(stage);
+
 export function CashAdvanceDetailContent({ id }: { id: string }) {
   const { t } = useTranslation('cash-advance');
   const { language } = useLanguage();
@@ -228,6 +234,32 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
   const approvedStatusId = statuses.find((s) => s.code === 'Approved')?.id ?? 2;
   const rejectedStatusId = statuses.find((s) => s.code === 'Rejected')?.id ?? 3;
 
+  // Request decisions take a comment the same way invoice decisions do. Approving at a stage listed
+  // in REQUEST_APPROVAL_COMMENT_STAGES takes an optional comment.
+  const approveComment = (stage: 'fm' | 'ceo', statusId: number) =>
+    statusId === approvedStatusId && approvalCommentAt(stage);
+  // Rejected: the required reason. Approved with a comment enabled: the comment, or null when empty.
+  // Anything else: null.
+  const decisionDescription = (stage: 'fm' | 'ceo', statusId: number, text: string) =>
+    statusIsRejected(statuses, statusId)
+      ? text.trim()
+      : approveComment(stage, statusId)
+        ? text.trim() || null
+        : null;
+  // Changing the status keeps the text, except when the comment is enabled for the stage and the
+  // change crosses between rejected and not rejected: a reason must not become an approval comment
+  // unseen, or the reverse.
+  const changeStatus =
+    (stage: 'fm' | 'ceo', current: number, setStatus: (id: number) => void, setText: (text: string) => void) =>
+    (statusId: number) => {
+      if (
+        approvalCommentAt(stage) &&
+        statusIsRejected(statuses, statusId) !== statusIsRejected(statuses, current)
+      )
+        setText('');
+      setStatus(statusId);
+    };
+
   // Payable total: rejected items drop out (matches the backend request Amount).
   const itemsTotal = items
     .filter((it) => it.statusId !== rejectedStatusId)
@@ -237,10 +269,26 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
   // CEO per-item approve/reject (workflow endpoint, gated by Approval.Ceo)
   const decideItem = async (item: ChargeRequestItemView, statusId: number) => {
     let desc: string | null = null;
+    // A box is pre-filled only with text of the same kind: an earlier reason when rejecting again,
+    // an earlier comment when approving again, so a reason never becomes a comment unseen.
+    const earlier = (kind: 'reason' | 'comment') =>
+      (kind === 'reason'
+        ? statusIsRejected(statuses, item.statusId)
+        : item.statusId === approvedStatusId)
+        ? (item.statusDescription ?? '')
+        : '';
+    if (statusId === approvedStatusId && approvalCommentAt('ceo')) {
+      const comment = window.prompt(
+        t('ops.invoiceDetail.commentPlaceholder', { defaultValue: 'Optional comment…' }),
+        earlier('comment'),
+      );
+      if (comment === null) return;
+      desc = comment.trim() || null;
+    }
     if (statusId === rejectedStatusId) {
       const reason = window.prompt(
         t('ops.common.statusReason', { defaultValue: 'Reason' }),
-        item.statusDescription ?? '',
+        earlier('reason'),
       );
       if (reason === null) return;
       if (!reason.trim()) {
@@ -282,7 +330,7 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
       await ceoDecideRequest({
         requestId: request.id,
         statusId: ceoStatusId,
-        statusDescription: statusIsRejected(statuses, ceoStatusId) ? ceoDesc.trim() : null,
+        statusDescription: decisionDescription('ceo', ceoStatusId, ceoDesc),
       });
       await loadRequest();
       showSuccess(t('ops.common.toasts.saved', { defaultValue: 'Saved successfully' }));
@@ -310,7 +358,7 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
       await financialManagerDecide({
         requestId: request.id,
         statusId: fmStatusId,
-        statusDescription: statusIsRejected(statuses, fmStatusId) ? fmDesc.trim() : null,
+        statusDescription: decisionDescription('fm', fmStatusId, fmDesc),
       });
       await loadRequest();
       showSuccess(t('ops.common.toasts.saved', { defaultValue: 'Saved successfully' }));
@@ -546,6 +594,11 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
                                   {it.statusDescription}
                                 </span>
                               )}
+                              {approveComment('ceo', it.statusId) && it.statusDescription && (
+                                <span className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
+                                  {it.statusDescription}
+                                </span>
+                              )}
                             </div>
                           ) : (
                             '—'
@@ -621,18 +674,26 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
                   translations={statusTranslations}
                   langId={langId}
                   value={ceoStatusId}
-                  onChange={setCeoStatusId}
+                  onChange={changeStatus('ceo', ceoStatusId, setCeoStatusId, setCeoDesc)}
                 />
               </div>
-              {statusIsRejected(statuses, ceoStatusId) && (
+              {(statusIsRejected(statuses, ceoStatusId) || approveComment('ceo', ceoStatusId)) && (
                 <div className="space-y-1">
-                  <Label>{t('ops.common.statusReason', { defaultValue: 'Reason' })}</Label>
+                  <Label>
+                    {statusIsRejected(statuses, ceoStatusId)
+                      ? t('ops.common.statusReason', { defaultValue: 'Reason' })
+                      : t('ops.common.statusComment', { defaultValue: 'Comment' })}
+                  </Label>
                   <Textarea
                     value={ceoDesc}
                     onChange={(e) => setCeoDesc(e.target.value)}
-                    placeholder={t('ops.common.statusReasonPlaceholder', {
-                      defaultValue: 'Explain the reason (required when rejected)…',
-                    })}
+                    placeholder={
+                      statusIsRejected(statuses, ceoStatusId)
+                        ? t('ops.common.statusReasonPlaceholder', {
+                            defaultValue: 'Explain the reason (required when rejected)…',
+                          })
+                        : t('ops.invoiceDetail.commentPlaceholder', { defaultValue: 'Optional comment…' })
+                    }
                   />
                 </div>
               )}
@@ -663,18 +724,26 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
                   translations={statusTranslations}
                   langId={langId}
                   value={fmStatusId}
-                  onChange={setFmStatusId}
+                  onChange={changeStatus('fm', fmStatusId, setFmStatusId, setFmDesc)}
                 />
               </div>
-              {statusIsRejected(statuses, fmStatusId) && (
+              {(statusIsRejected(statuses, fmStatusId) || approveComment('fm', fmStatusId)) && (
                 <div className="space-y-1">
-                  <Label>{t('ops.common.statusReason', { defaultValue: 'Reason' })}</Label>
+                  <Label>
+                    {statusIsRejected(statuses, fmStatusId)
+                      ? t('ops.common.statusReason', { defaultValue: 'Reason' })
+                      : t('ops.common.statusComment', { defaultValue: 'Comment' })}
+                  </Label>
                   <Textarea
                     value={fmDesc}
                     onChange={(e) => setFmDesc(e.target.value)}
-                    placeholder={t('ops.common.statusReasonPlaceholder', {
-                      defaultValue: 'Explain the reason (required when rejected)…',
-                    })}
+                    placeholder={
+                      statusIsRejected(statuses, fmStatusId)
+                        ? t('ops.common.statusReasonPlaceholder', {
+                            defaultValue: 'Explain the reason (required when rejected)…',
+                          })
+                        : t('ops.invoiceDetail.commentPlaceholder', { defaultValue: 'Optional comment…' })
+                    }
                   />
                 </div>
               )}
@@ -830,7 +899,9 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
               {request.ceoStatusDescription && (
                 <div className="flex flex-col gap-1">
                   <span className="text-muted-foreground">
-                    {t('ops.common.statusReason', { defaultValue: 'Reason' })}
+                    {approveComment('ceo', request.ceoStatusId)
+                      ? t('ops.common.statusComment', { defaultValue: 'Comment' })
+                      : t('ops.common.statusReason', { defaultValue: 'Reason' })}
                   </span>
                   <span className="text-xs whitespace-pre-wrap">
                     {request.ceoStatusDescription}
@@ -853,7 +924,9 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
               {request.financialManagerStatusDescription && (
                 <div className="flex flex-col gap-1">
                   <span className="text-muted-foreground">
-                    {t('ops.common.statusReason', { defaultValue: 'Reason' })}
+                    {approveComment('fm', request.financialManagerStatusId)
+                      ? t('ops.common.statusComment', { defaultValue: 'Comment' })
+                      : t('ops.common.statusReason', { defaultValue: 'Reason' })}
                   </span>
                   <span className="text-xs whitespace-pre-wrap">
                     {request.financialManagerStatusDescription}
