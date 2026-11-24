@@ -4,7 +4,6 @@ import authOptions from '@/app/api/auth/[...nextauth]/auth-options';
 import { apiErrorResponse } from '@/lib/api-error';
 import {
   listInvoices,
-  createInvoice,
   updateInvoice,
   removeInvoice,
 } from '@/services/cash-advance-api';
@@ -19,20 +18,6 @@ export async function GET() {
     return NextResponse.json(await listInvoices(session.accessToken));
   } catch (error) {
     return apiErrorResponse(error, 'listing invoices');
-  }
-}
-
-// POST /api/cash-advance/invoices — create an invoice
-export async function POST(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.accessToken) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
-    const body = await req.json();
-    return NextResponse.json(await createInvoice(session.accessToken, body), { status: 201 });
-  } catch (error) {
-    return apiErrorResponse(error, 'creating invoice');
   }
 }
 

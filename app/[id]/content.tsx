@@ -42,7 +42,6 @@ import {
   listChargeRequestItems,
   ceoDecideItem,
   ceoDecideRequest,
-  financialManagerDecide,
   recordPayment,
   uploadCashAdvanceDocument,
   listCashAdvanceDocuments,
@@ -70,6 +69,13 @@ import {
 } from '@/lib/cash-advance/api/client';
 import { formatDate, formatRial } from '@/lib/cash-advance/format';
 import { safeBack } from '@/lib/cash-advance/safe-back';
+import {
+  allLiveItemsRejected,
+  paymentGate,
+  requestFlowErrorKey,
+  showFmStatus,
+  type FlowIds,
+} from '@/lib/cash-advance/request-flow';
 import { StatusSelect, statusName, statusIsRejected } from './components/status-select';
 import { usePermission } from '@/hooks/use-permission';
 
@@ -134,9 +140,6 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
   const [ceoStatusId, setCeoStatusId] = useState(0);
   const [ceoDesc, setCeoDesc] = useState('');
   const [savingCeo, setSavingCeo] = useState(false);
-  const [fmStatusId, setFmStatusId] = useState(0);
-  const [fmDesc, setFmDesc] = useState('');
-  const [savingFm, setSavingFm] = useState(false);
 
   // Payment upload
   const fileRef = useRef<HTMLInputElement>(null);
@@ -151,8 +154,6 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
     if (found) {
       setCeoStatusId(found.ceoStatusId);
       setCeoDesc(found.ceoStatusDescription ?? '');
-      setFmStatusId(found.financialManagerStatusId);
-      setFmDesc(found.financialManagerStatusDescription ?? '');
     }
     return found;
   };
@@ -229,10 +230,26 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
 
   // ── Permission gates + status ids ──
   const canCeo = hasPermission(['CashAdvance.Approval.Ceo']);
-  const canFm = hasPermission(['CashAdvance.Approval.FinancialManager']);
   const canPay = hasPermission(['CashAdvance.Payment.Manage']);
   const approvedStatusId = statuses.find((s) => s.code === 'Approved')?.id ?? 2;
   const rejectedStatusId = statuses.find((s) => s.code === 'Rejected')?.id ?? 3;
+  const pendingStatusId = statuses.find((s) => s.code === 'Pending')?.id ?? 1;
+  const flowIds: FlowIds = {
+    pendingId: pendingStatusId,
+    approvedId: approvedStatusId,
+    rejectedId: rejectedStatusId,
+  };
+  // Every live item rejected: the CEO can no longer approve the request as a whole.
+  const everyItemRejected = allLiveItemsRejected(items, flowIds);
+  // A request-flow refusal from the server in our own words; anything else as before.
+  const flowErrorText = (e: unknown, onItemReject = false) => {
+    const code = (e as Error)?.message ?? '';
+    const key = requestFlowErrorKey(code, onItemReject);
+    if (key) return t(key);
+    return code
+      ? translateApiError(code, t)
+      : t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' });
+  };
 
   // Request decisions take a comment the same way invoice decisions do. Approving at a stage listed
   // in REQUEST_APPROVAL_COMMENT_STAGES takes an optional comment.
@@ -308,15 +325,17 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
       // (rejected items drop out), so the header total must refresh too.
       await Promise.all([loadItems(), loadRequest()]);
     } catch (e) {
-      showError(
-        (e as Error)?.message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }),
-      );
+      showError(flowErrorText(e, statusId === rejectedStatusId));
     }
   };
 
   // ── Approval handlers ──
   const saveCeo = async () => {
     if (!request) return;
+    if (ceoStatusId === approvedStatusId && everyItemRejected) {
+      showError(t('ops.requestDetail.flowErrors.allItemsRejected'));
+      return;
+    }
     if (statusIsRejected(statuses, ceoStatusId) && !ceoDesc.trim()) {
       showError(
         t('ops.requestDetail.itemValidation.reasonRequired', {
@@ -335,39 +354,9 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
       await loadRequest();
       showSuccess(t('ops.common.toasts.saved', { defaultValue: 'Saved successfully' }));
     } catch (e) {
-      showError(
-        (e as Error)?.message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }),
-      );
+      showError(flowErrorText(e));
     } finally {
       setSavingCeo(false);
-    }
-  };
-
-  const saveFm = async () => {
-    if (!request) return;
-    if (statusIsRejected(statuses, fmStatusId) && !fmDesc.trim()) {
-      showError(
-        t('ops.requestDetail.itemValidation.reasonRequired', {
-          defaultValue: 'A reason is required when rejected',
-        }),
-      );
-      return;
-    }
-    setSavingFm(true);
-    try {
-      await financialManagerDecide({
-        requestId: request.id,
-        statusId: fmStatusId,
-        statusDescription: decisionDescription('fm', fmStatusId, fmDesc),
-      });
-      await loadRequest();
-      showSuccess(t('ops.common.toasts.saved', { defaultValue: 'Saved successfully' }));
-    } catch (e) {
-      showError(
-        (e as Error)?.message || t('ops.common.toasts.saveError', { defaultValue: 'Failed to save' }),
-      );
-    } finally {
-      setSavingFm(false);
     }
   };
 
@@ -408,8 +397,8 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
         }),
       );
     } catch (e) {
-      // Surface backend business errors (e.g. FM-approval gate) as a clean toast.
-      showError(translateApiError((e as Error)?.message ?? '', t));
+      // Surface backend business errors (the CEO / finance-manager gates) as a clean toast.
+      showError(flowErrorText(e));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -667,6 +656,14 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {everyItemRejected && (
+                <Alert variant="warning" icon="warning" appearance="light">
+                  <AlertIcon>
+                    <RiErrorWarningFill />
+                  </AlertIcon>
+                  <AlertTitle>{t('ops.requestDetail.flowErrors.allItemsRejected')}</AlertTitle>
+                </Alert>
+              )}
               <div className="space-y-1">
                 <Label>{t('ops.common.status', { defaultValue: 'Status' })}</Label>
                 <StatusSelect
@@ -698,58 +695,11 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
                 </div>
               )}
               <div className="flex justify-end">
-                <Button onClick={saveCeo} disabled={savingCeo}>
+                <Button
+                  onClick={saveCeo}
+                  disabled={savingCeo || (everyItemRejected && ceoStatusId === approvedStatusId)}
+                >
                   {savingCeo
-                    ? t('ops.common.processing', { defaultValue: 'Processing...' })
-                    : t('ops.common.save', { defaultValue: 'Save' })}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          )}
-
-          {/* Financial manager approval */}
-          {canFm && (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {t('ops.requestDetail.fmStatus', { defaultValue: 'Finance Manager Status' })}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1">
-                <Label>{t('ops.common.status', { defaultValue: 'Status' })}</Label>
-                <StatusSelect
-                  statuses={statuses}
-                  translations={statusTranslations}
-                  langId={langId}
-                  value={fmStatusId}
-                  onChange={changeStatus('fm', fmStatusId, setFmStatusId, setFmDesc)}
-                />
-              </div>
-              {(statusIsRejected(statuses, fmStatusId) || approveComment('fm', fmStatusId)) && (
-                <div className="space-y-1">
-                  <Label>
-                    {statusIsRejected(statuses, fmStatusId)
-                      ? t('ops.common.statusReason', { defaultValue: 'Reason' })
-                      : t('ops.common.statusComment', { defaultValue: 'Comment' })}
-                  </Label>
-                  <Textarea
-                    value={fmDesc}
-                    onChange={(e) => setFmDesc(e.target.value)}
-                    placeholder={
-                      statusIsRejected(statuses, fmStatusId)
-                        ? t('ops.common.statusReasonPlaceholder', {
-                            defaultValue: 'Explain the reason (required when rejected)…',
-                          })
-                        : t('ops.invoiceDetail.commentPlaceholder', { defaultValue: 'Optional comment…' })
-                    }
-                  />
-                </div>
-              )}
-              <div className="flex justify-end">
-                <Button onClick={saveFm} disabled={savingFm}>
-                  {savingFm
                     ? t('ops.common.processing', { defaultValue: 'Processing...' })
                     : t('ops.common.save', { defaultValue: 'Save' })}
                 </Button>
@@ -801,14 +751,17 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
                   )}
                 </div>
               )}
-              {canPay && request.financialManagerStatusId !== approvedStatusId && (
+              {canPay && paymentGate(request, flowIds) === 'waitCeo' && (
                 <div className="text-sm text-muted-foreground">
-                  {t('ops.requestDetail.payment.fmRequired', {
-                    defaultValue: 'Payment can be recorded after Financial Manager approval.',
-                  })}
+                  {t('ops.requestDetail.payment.waitingCeo')}
                 </div>
               )}
-              {canPay && request.financialManagerStatusId === approvedStatusId && (
+              {canPay && paymentGate(request, flowIds) === 'fmRejected' && (
+                <div className="text-sm text-rose-700 dark:text-rose-400">
+                  {t('ops.requestDetail.payment.fmRejected')}
+                </div>
+              )}
+              {canPay && paymentGate(request, flowIds) === 'payable' && (
                 <>
                   <div className="grid gap-3 sm:grid-cols-2 max-w-lg">
                     <div className="space-y-1">
@@ -913,12 +866,10 @@ export function CashAdvanceDetailContent({ id }: { id: string }) {
                   {t('ops.requestDetail.fmStatus', { defaultValue: 'Finance Manager Status' })}
                 </span>
                 <span className="font-medium">
-                  {statusName(
-                    statuses,
-                    statusTranslations,
-                    request.financialManagerStatusId,
-                    langId,
-                  )}
+                  {/* No finance-manager step on new requests: a dash until a decision exists. */}
+                  {showFmStatus(request.financialManagerStatusId, flowIds)
+                    ? statusName(statuses, statusTranslations, request.financialManagerStatusId, langId)
+                    : '—'}
                 </span>
               </div>
               {request.financialManagerStatusDescription && (

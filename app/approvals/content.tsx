@@ -178,19 +178,13 @@ export function CashAdvanceApprovalsContent() {
       queue,
       href: `/invoice/${i.id}`,
     });
-    // Requests: CEO first, then FM
+    // Requests: the CEO only
     if (canCeo) {
       requests.filter((r) => r.ceoStatusId === 1).forEach((r) => put(reqRow(r, 'waiting')));
       requests.filter((r) => r.ceoStatusId === 2).forEach((r) => put(reqRow(r, 'approved')));
     }
-    if (canFm) {
-      requests
-        .filter((r) => r.ceoStatusId === 2 && r.financialManagerStatusId === 1)
-        .forEach((r) => put(reqRow(r, 'waiting')));
-      requests
-        .filter((r) => r.financialManagerStatusId === 2)
-        .forEach((r) => put(reqRow(r, 'approved')));
-    }
+    // The finance manager has no step on charge requests: after the CEO approves, the finance
+    // expert pays. Requests therefore never queue here for the finance manager; invoices still do.
     // Invoices: FM first, then CEO
     if (canFm) {
       invoices.filter((i) => i.financialManagerStatusId === 1).forEach((i) => put(invRow(i, 'waiting')));

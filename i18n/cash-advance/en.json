@@ -550,6 +550,9 @@
           "itemsRequired": "Add at least one item",
           "overCeiling": "The total must be smaller than the fund amount"
         }
+      },
+      "stage": {
+        "awaitingPayment": "Awaiting Payment"
       }
     },
     "requestDetail": {
@@ -575,7 +578,9 @@
         "type": "Payment Type",
         "typePlaceholder": "Select payment type",
         "dateRequired": "Payment date is required",
-        "typeRequired": "Payment type is required"
+        "typeRequired": "Payment type is required",
+        "waitingCeo": "Payment can be recorded after CEO approval.",
+        "fmRejected": "The finance manager rejected this request earlier; it cannot be paid."
       },
       "itemsTitle": "Line Items",
       "addItem": "Add Item",
@@ -613,6 +618,12 @@
         "itemSaved": "Item saved",
         "itemDeleted": "Item deleted",
         "paymentUploaded": "Payment receipt uploaded"
+      },
+      "flowErrors": {
+        "allItemsRejected": "Every item of this request is rejected, so the request as a whole cannot be approved. Reject the request if needed.",
+        "lastItemReject": "This request is approved and this is its last item not yet rejected; rejecting it would reject every item, which is not allowed. If the request should not be paid, reject the whole request.",
+        "fmRejected": "The finance manager rejected this request earlier; it cannot be paid.",
+        "fmStepRemoved": "The finance manager no longer has a step in the petty-cash request flow."
       }
     },
     "approvals": {
@@ -841,7 +852,13 @@
       "toasts": {
         "submitted": "Invoice submitted",
         "corrected": "Correction submitted"
-      }
+      },
+      "monthSettled": {
+        "submit": "{{month}} is closed for this fund; an invoice dated in it cannot be submitted. Check the invoice date.",
+        "resubmit": "This invoice is dated in {{month}}, which is closed for this fund; it cannot be resubmitted.",
+        "moveDate": "The new date is in {{month}}, which is closed for this fund; choose a date in an open month."
+      },
+      "registrationWindowClosed": "The {{days}}-day deadline to register this invoice ended on {{date}}."
     },
     "invoiceView": {
       "title": "Invoices",

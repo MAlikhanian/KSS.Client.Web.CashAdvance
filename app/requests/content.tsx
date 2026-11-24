@@ -143,7 +143,7 @@ export function CashAdvanceRequestsContent() {
     [persons, langId],
   );
 
-  // Single derived workflow stage for the grid: Submitted → CEO → Finance → Paid, or Rejected.
+  // Single derived workflow stage for the grid: Submitted → CEO → Paid, or Rejected.
   // Status seed is fixed: 1=Pending, 2=Approved, 3=Rejected (backend StatusApproved = 2).
   const APPROVED_STATUS = 2;
   const REJECTED_STATUS = 3;
@@ -169,9 +169,11 @@ export function CashAdvanceRequestsContent() {
           'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-900',
         rowClass: '',
       };
+    // No finance-manager step on requests: after the CEO approves, the request waits for payment.
+    // "Finance Approved" above remains only on older requests that carry that decision.
     if (r.ceoStatusId === APPROVED_STATUS)
       return {
-        label: t('ops.requests.stage.ceoApproved', { defaultValue: 'CEO Approved' }),
+        label: t('ops.requests.stage.awaitingPayment', { defaultValue: 'Awaiting Payment' }),
         badgeClass:
           'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-900',
         rowClass: '',

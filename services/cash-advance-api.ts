@@ -10,6 +10,8 @@
  * JSON is camelCase (System.Text.Json web defaults).
  */
 
+import { errorDetails } from '@/lib/cash-advance/error-details';
+
 function getBaseUrl(): string {
   const baseUrl = process.env.CASHADVANCE_API_BASE_URL;
   if (!baseUrl) {
@@ -32,13 +34,19 @@ async function req<T>(token: string, method: string, path: string, body?: unknow
   if (!response.ok) {
     const errorText = await response.text().catch(() => response.statusText);
     let message = errorText;
+    let details: Record<string, unknown> | undefined;
     try {
       const parsed = JSON.parse(errorText);
       if (parsed?.message) message = String(parsed.message);
+      details = errorDetails(parsed);
     } catch {
       /* keep raw text */
     }
-    throw new Error(message || `Request failed: ${response.status}`);
+    const err = new Error(message || `Request failed: ${response.status}`) as Error & {
+      details?: Record<string, unknown>;
+    };
+    if (details) err.details = details;
+    throw err;
   }
   if (response.status === 204) return undefined as T;
   const text = await response.text();
@@ -613,8 +621,7 @@ export interface InvoiceUpdate {
 export const listInvoices = (token: string) =>
   req<InvoiceView[]>(token, 'GET', `/Api/CashAdvanceScopedRead/ListInvoices`);
 
-export const createInvoice = (token: string, dto: InvoiceInsert) =>
-  req<InvoiceView>(token, 'POST', `/Api/Invoice/AddDto`, dto);
+// Invoices are created only through SubmitInvoice below; Invoice/AddDto is closed on the server.
 
 export const updateInvoice = (token: string, dto: InvoiceUpdate) =>
   req<InvoiceView>(token, 'PUT', `/Api/Invoice/UpdateDto`, dto);

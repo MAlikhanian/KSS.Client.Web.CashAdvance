@@ -61,6 +61,18 @@ import {
   unavailableSelected,
 } from './item-picker';
 import { correctionOpen } from '@/lib/cash-advance/decision-lock';
+import {
+  SETTLED_KEYS,
+  monthLabel,
+  settledMonthOf,
+  settledVariant,
+} from '@/lib/cash-advance/month-settled';
+import {
+  WINDOW_CLOSED_KEY,
+  closedWindowOf,
+  lastDayLabel,
+  windowDaysLabel,
+} from '@/lib/cash-advance/registration-window';
 
 const FA = 12;
 const EN = 10;
@@ -114,6 +126,9 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceAmount, setInvoiceAmount] = useState<number>(0);
   const [invoiceDate, setInvoiceDate] = useState<string>('');
+  // The date the invoice is stored with, kept apart from the edited one: a closed month that is
+  // the stored one means a resubmit is refused, any other means the new date moved into it.
+  const [storedInvoiceDate, setStoredInvoiceDate] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<File[]>([]);
@@ -241,6 +256,7 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
         setInvoiceNumber(inv.invoiceNumber ?? '');
         setInvoiceAmount(inv.invoiceAmount);
         setInvoiceDate(inv.invoiceDate ?? '');
+        setStoredInvoiceDate(inv.invoiceDate ?? null);
         setDescription(inv.description ?? '');
         setSelectedItemIds(
           new Set(links.filter((l) => l.invoiceId === editId).map((l) => l.cashAdvanceChargeRequestItemId)),
@@ -334,7 +350,27 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
       }
     } catch (e) {
       const message = (e as Error)?.message;
-      if (message === INVOICE_ITEM_OVER_CAP) {
+      const lang = language.code === 'en' ? 'en' : 'fa';
+      const closedWindow = closedWindowOf(e);
+      const closed = settledMonthOf(e);
+      if (closedWindow) {
+        // Refused on the server: the date is past its registration window. The last allowed day
+        // and the window length come from the answer; the rule itself is the server's.
+        showError(
+          t(WINDOW_CLOSED_KEY, {
+            days: windowDaysLabel(closedWindow, lang),
+            date: lastDayLabel(closedWindow, lang),
+          }),
+        );
+      } else if (closed) {
+        // Refused on the server: the month has its settlement record. Named as a value only.
+        const variant = settledVariant(closed, isEdit, storedInvoiceDate);
+        showError(
+          t(SETTLED_KEYS[variant], {
+            month: monthLabel(closed, lang),
+          }),
+        );
+      } else if (message === INVOICE_ITEM_OVER_CAP) {
         showError(
           t('ops.invoiceSubmit.overCap', {
             defaultValue:

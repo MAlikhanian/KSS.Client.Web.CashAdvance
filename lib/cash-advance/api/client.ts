@@ -55,6 +55,7 @@ import type {
   TransactionUpdate,
   FlowTypeView,
 } from '@/services/cash-advance-api';
+import { errorDetails } from '@/lib/cash-advance/error-details';
 import type {
   WorksiteView,
   WorksiteTranslationView,
@@ -145,13 +146,17 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
   });
   if (!res.ok) {
     let message = `Request failed: ${res.status}`;
+    let details: Record<string, unknown> | undefined;
     try {
       const parsed = await res.json();
       if (parsed?.message) message = String(parsed.message);
+      details = errorDetails(parsed);
     } catch {
       /* keep default */
     }
-    throw new Error(message);
+    const err = new Error(message) as Error & { details?: Record<string, unknown> };
+    if (details) err.details = details;
+    throw err;
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -296,8 +301,6 @@ export const removeChargeRequestItem = (entity: ChargeRequestItemView | { id: st
 
 // ── Invoices (Invoice) ──
 export const listInvoices = () => http<InvoiceView[]>('GET', '/invoices');
-export const createInvoice = (dto: InvoiceInsert) =>
-  http<InvoiceView>('POST', '/invoices', dto);
 export const updateInvoice = (dto: InvoiceUpdate) =>
   http<InvoiceView>('PUT', '/invoices', dto);
 export const removeInvoice = (entity: InvoiceView | { id: string }) =>
