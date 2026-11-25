@@ -767,7 +767,7 @@
       },
       "fmDecisionTitle": "Finance Manager Decision",
       "ceoDecisionTitle": "CEO Decision",
-      "ceoBlockedHint": "Waiting for the finance manager's approval first.",
+      "ceoBlockedHint": "The finance manager must approve this invoice first; after that, the CEO's decision and notes open.",
       "decisionLocked": "The decision on this invoice is locked and can no longer be changed.",
       "decisionConcurrency": "The invoice was changed at the same time; refresh and try again",
       "decision": "Decision",

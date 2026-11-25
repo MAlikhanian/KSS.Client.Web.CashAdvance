@@ -625,8 +625,14 @@ export function SubmitInvoiceContent({ editId = null }: { editId?: string | null
                         />
                         <span className="flex-1 min-w-0">
                           <span className="block font-medium">{productNameOf(item.productId)}</span>
-                          {item.description && (
-                            <span className="block text-xs text-muted-foreground truncate">{item.description}</span>
+                          {/* The item's description as a second line: two lines at most, the full text on hover. */}
+                          {item.description?.trim() && (
+                            <span
+                              className="text-xs text-muted-foreground line-clamp-2 break-words"
+                              title={item.description}
+                            >
+                              {item.description}
+                            </span>
                           )}
                         </span>
                         <span className="text-xs text-muted-foreground text-end">

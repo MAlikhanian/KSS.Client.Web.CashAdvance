@@ -629,7 +629,15 @@ export function InvoiceReadonlyDetailContent({ id }: { id: string }) {
                               {reqNumber ?? '—'}
                             </span>
                           </TableCell>
-                          <TableCell>{item ? productLabel(item.productId) : '—'}</TableCell>
+                          <TableCell>
+                            {item ? productLabel(item.productId) : '—'}
+                            {/* The item's description as a second line, wrapped in full. */}
+                            {item?.description?.trim() && (
+                              <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                                {item.description}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="text-end">
                             {item ? formatRial(item.lineTotal) : '—'}
                           </TableCell>
