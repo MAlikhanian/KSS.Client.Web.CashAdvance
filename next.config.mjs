@@ -13,7 +13,7 @@ const SHELL_URL = process.env.SHELL_URL ?? 'http://localhost:3000';
 const nextConfig = {
   basePath: '/cash-advance',
   output: 'standalone',
-  images: {},
+  images: { unoptimized: true },
 
   async rewrites() {
     // DEV ONLY. In production every request reaches this app through the
